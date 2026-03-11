@@ -13,6 +13,9 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
   - *Why?* This ensures alphabetical sorting perfectly matches chronological order, while keeping the context (the title) immediately visible without needing to open the folder to see what it's about.
 
 - **Markdown Files:** The primary notes file inside the directory should simply be named `lesson.md` or `notes.md` to avoid redundant paths (like `S01E01-title/S01E01-title.md`), though keeping the downloaded markdown name as-is (e.g., `s01e01-programowanie...md`) is also perfectly fine if downloaded directly from the course platform.
+- GCP standards: BigQuery (`bq`), Firestore (`fs`), Cloud Functions entry point is always `main()`.
+- LLM Default: We use **Gemini 2.5 Flash** on **Vertex AI** via the modern `google-genai` SDK.
+- Python package management: `uv` only. `pyproject.toml` or `requirements.txt` must use precise library versions (no `^` operators).
 
 ### Infrastructure (Terraform)
 - **Scope:** All Terraform code is centralized in the `/terraform` folder using standard Google Cloud Terraform module structures.
