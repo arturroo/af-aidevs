@@ -1,0 +1,1 @@
+# Example module main configuration
