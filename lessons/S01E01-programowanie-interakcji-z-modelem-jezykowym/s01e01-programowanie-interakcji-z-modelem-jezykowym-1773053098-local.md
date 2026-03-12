@@ -10,7 +10,7 @@ cover_image: 'https://cloud.overment.com/Hero_navigating_the_node_realm-17727253
 circle_post_id: 30339505
 ---
 
-![https://vimeo.com/1169549431](https://vimeo.com/1169549431)
+![images/vimeo.com/1169549431](images/vimeo.com/1169549431)
 
 Cześć! Miło mi powitać Cię w AI_devs 4: Builders. To szkolenie, w którym poprzez budowanie gotowych produkcyjnie rozwiązań przekonamy się, co może, a czego nie może generatywna sztuczna inteligencja.
 
@@ -25,19 +25,19 @@ Modele Językowe (eng. large language models, LLM) mogą stanowić część log
 
 Dzieje się to jednak kosztem utraty pełnej kontroli, ponieważ LLM nie dają gwarancji, że nawet dla tych samych danych wejściowych, otrzymamy ten sam wynik za każdym razem. Mówiąc inaczej: **programowanie generatywnych aplikacji wiąże się z łączeniem deterministycznej natury kodu z niedeterministycznymi wynikami zwracanymi przez modele AI** (choć kiedyś może się to zmienić - "[Defeating Nondeterminism in LLM Inference](https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/)" ~ Thinking Machines). O tym, co to dokładnie oznacza, najlepiej przekonać się w praktyce. 
 
-Dostęp do modeli przez API oferowany jest między innymi przez **[OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://console.anthropic.com/settings/keys)czy [Gemini](https://aistudio.google.com/api-keys)**, a także przez platformy takie jak **[OpenRouter](https://openrouter.ai/settings/keys)**, [Amazon Bedrock](https://aws.amazon.com/bedrock/) czy [Microsoft Azure](https://azure.microsoft.com/en-us/solutions/ai) (często produkcyjnie).  W AI_devs 4 pojawią się przykłady z platform, których są wyróżnione pogrubionym fontem. Dzięki temu doświadczymy różnic pomiędzy ich interfejsem oraz dostępnymi modelami. Ogólne zasady wszędzie pozostają jednak takie same, dlatego zaczniemy od fundamentów.
+Dostęp do modeli przez API oferowany jest między innymi przez **[OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://console.anthropic.com/settings/keys) czy [Gemini](https://aistudio.google.com/api-keys)**, a także przez platformy takie jak **[OpenRouter](https://openrouter.ai/settings/keys)**, [Amazon Bedrock](https://aws.amazon.com/bedrock/) czy [Microsoft Azure](https://azure.microsoft.com/en-us/solutions/ai) (często produkcyjnie).  W AI_devs 4 pojawią się przykłady z platform, których są wyróżnione pogrubionym fontem. Dzięki temu doświadczymy różnic pomiędzy ich interfejsem oraz dostępnymi modelami. Ogólne zasady wszędzie pozostają jednak takie same, dlatego zaczniemy od fundamentów.
 
 Z matematycznego punktu widzenia model językowy jest funkcją, która dla otrzymanych danych wylicza możliwe dalsze ciągi i ich prawdopodobieństwa. Spośród nich **wybierany jest pojedynczy „token"** (często z elementem losowym), co sprawia, że wynik końcowy pozostaje **niedeterministyczny**. Proces ten uruchomiony w pętli buduje odpowiedź krok po kroku, aż do wybrania tokenu sygnalizującego jej zakończenie.
 
 Poniższa wizualizacja ilustruje proces generowania kolejnych tokenów (fragmentów) i pokazuje również, że jest on **autoregresyjny**. Czyli przy tworzeniu kolejnych fragmentów pod uwagę brane są zarówno **dane wejściowe**, jak i **cała dotychczas wygenerowana treść**, a wygenerowany token **nie może zostać usunięty** ([przynajmniej na ten moment](https://huggingface.co/papers/2602.08676)). Oznacza to, że na jakość wypowiedzi modelu wpływa nie tylko to, co mówi użytkownik, ale także treść generowana przez AI oraz instrukcje dostarczone przez developera w formie tzw. instrukcji systemowej (bądź promptu systemowego).
 
-![](https://cloud.overment.com/2026-01-14/ai_devs_4_autoregression-7af4f432-b.png)
+![](images/cloud.overment.com/2026-01-14/ai_devs_4_autoregression-7af4f432-b.png)
 
 API modeli językowych jest bezstanowe (choć po części zmieniają to Interactions API oraz Responses API, ale tylko powierzchownie). Oznacza to, że **każdorazowo przesyłamy komplet danych**, które model ma przetworzyć. Obowiązuje nas jednak limit określany jako okno kontekstowe (eng. Context Window) wyrażone w **tokenach**, który obejmuje **wszystkie dane, które w danej chwili przetwarza model** z konieczną przestrzenią na tokeny, które są generowane.
 
 Poniżej widać jak informacje w postaci **promptu systemowego, wiadomości użytkownika** oraz **odpowiedzi modelu** są tokenizowane. Wśród tokenów pojawiają się także tokeny specjalne, których celem jest ustrukturyzowanie sekwencji (`<|im_start|>` i `<|im_end|>` oznaczają początek i koniec wiadomości). Widzimy także, że z perspektywy modelu tokeny te mają postać liczbowych identyfikatorów, ponieważ jest to format na którym operuje model.
 
-![Tokenizacja polega na zamianie treści na tokeny, których identyfikatory przetwarzają modele AI](https://cloud.overment.com/2026-01-14/ai_devs_4_tokens-c0e7019d-3.png)
+![Tokenizacja polega na zamianie treści na tokeny, których identyfikatory przetwarzają modele AI](images/cloud.overment.com/2026-01-14/ai_devs_4_tokens-c0e7019d-3.png)
 
 Sposób podziału treści na tokeny zależy od tokenizatora z którego korzysta dany model. Tokenami mogą być fragmenty słów, całe słowa, znaki interpunkcyjne czy spacje. Podział uzależniony jest między innymi od częstotliwości występowania w danych treningowych. Natomiast celem jest efektywne przetwarzanie danych. 
 
@@ -54,17 +54,17 @@ Zatem na ten moment wiemy, że:
 
 Budowanie zapytań po stronie kodu pozwala dość swobodnie manipulować kontekstem pomiędzy zapytaniami. Widać to poniżej, gdzie w pierwszym żądaniu zadanie modelu polegało jedynie na **klasyfikacji zapytania**, a drugie **wykorzystało rezultat poprzedniego** dostosowując prompt tak, aby model poprowadził użytkownika przez proces realizacji zwrotu produktu. 
 
-![](https://cloud.overment.com/2026-01-14/ai_devs_4_routing-ab6c0ada-b.png)
+![](images/cloud.overment.com/2026-01-14/ai_devs_4_routing-ab6c0ada-b.png)
 
 Z perspektywy użytkownika to nadal może być prosta interakcja **pytanie → odpowiedź**. Natomiast dla nas to podejście daje większą kontrolę nad kontekstem oraz zarządzeniem uwagą modelu, co zwykle przekłada się na większą skuteczność ale też z kosztem - wydłużonym czasem reakcji oraz wzrostem kosztów.
 
 Kluczowa lekcja jest następująca: **sterowanie zachowaniem modelu za pomocą kodu polega na zarządzaniu kontekstem i obejmuje możliwość tworzenia wielu zapytań, których wyniki mogą być wykorzystywane pomiędzy sobą.**
 
-Przejdźmy teraz do pierwszej interakcji z modelem językowym, korzystając przy tym z API OpenAI ([zaloguj się](https://openrouter.ai/settings/keys), doładuj konto kwotą np. $5 i pobierz klucz API). Aby w pełni zobaczyć zasady, które nas obowiązuję, przejdziemy przez prosty skrypt. Uwaga: w przypadku najnowszych modeli, konieczne jest także potwierdzenie konta dokumentem tożsamości. Można więc skorzystać ze starszych modeli (np. GPT-4.1). 
+Przejdźmy teraz do pierwszej interakcji z modelem językowym, korzystając przy tym z API OpenAI lub OpenRouter ([zaloguj się](https://openrouter.ai/settings/keys), doładuj konto kwotą np. $5 i pobierz klucz API). Aby w pełni zobaczyć zasady, które nas obowiązuję, przejdziemy przez prosty skrypt. Uwaga: w przypadku najnowszych modeli, konieczne jest także potwierdzenie konta dokumentem tożsamości. Można więc skorzystać ze starszych modeli (np. GPT-4.1). 
 
 Poniższy kod wysyła zapytanie do OpenAI, przekazując listę wiadomości konwersacji pomiędzy użytkownikiem i asystentem. Po każdej interakcji, odpowiedź modelu zostaje dopisana do wątku dzięki czemu budujemy kontekst kolejnych zapytań. W rezultacie otrzymujemy efekt rozmowy z AI, którą charakteryzują się czatboty. 
 
-![](https://cloud.overment.com/2026-01-20/ai_devs_4_interaction-b3ae63e2-a.png)
+![](images/cloud.overment.com/2026-01-20/ai_devs_4_interaction-b3ae63e2-a.png)
 
 Kod źródłowy dla powyższej interakcji dostępny jest w przykładzie [01_01_interaction](https://github.com/i-am-alice/4th-devs/tree/main/01_01_interaction).
 
@@ -74,7 +74,7 @@ Obecność Modeli Językowych w kodzie wymaga strukturyzowania ich wypowiedzi w
 
 API [OpenAI](https://platform.openai.com/docs/guides/structured-outputs) wymaga podania właściwości `text` wskazującej na format `json_schema` oraz pola `schema`, które zawiera strukturę zgodną z ograniczoną wersją JSON Schema, opisaną w dokumentacji [OpenAI](https://platform.openai.com/docs/guides/structured-outputs#supported-schemas), [Anthropic](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) czy [Gemini](https://ai.google.dev/gemini-api/docs/structured-output?example=recipe). W wówczas w odpowiedzi otrzymujemy tekst (JSON String), który można sparsować przy użyciu natywnych funkcji języka programowania, w którym pracujemy.
 
-![](https://cloud.overment.com/2026-01-14/ai_devs_4_structured-39c12447-3.png)
+![](images/cloud.overment.com/2026-01-14/ai_devs_4_structured-39c12447-3.png)
 
 Zatem **Structured Output** pozwala transformować **nieustrukturyzowane dane** (np. notatkę, nagranie, obraz) w niemal dowolny sposób, np.:
 
@@ -99,7 +99,7 @@ JSON Schema dołączony do zapytania API należy rozumieć na dwa sposoby:
 
 Punkt drugi jest szczególnie ważny, ponieważ jest bardzo często pomijany przy projektowaniu narzędzi oraz agentów AI. Warto pamiętać, że przy projektowaniu JSON Schema **może pomóc LLM**, ale (przynajmniej obecnie) musimy samodzielnie zadbać o finalną jakość opisów i nazw. 
 
-![](https://cloud.overment.com/2026-01-16/ai_devs_4_schema-739091a9-9.png)
+![](images/cloud.overment.com/2026-01-16/ai_devs_4_schema-739091a9-9.png)
 
 Przykład kodu przedstawiający pracę z **Structured Outputs** znajduje się w [01_01_structured](https://github.com/i-am-alice/4th-devs/tree/main/01_01_structured).
 
@@ -109,15 +109,15 @@ Istotna jest także **kolejność** generowanych właściwości ze względu na f
 
 Structured Outputs staje się więc kluczowym elementem LLM API z którego będziemy korzystać bardzo często zaraz obok Function Calling. Temat ten omówimy jednak nieco później.
 ## Formatowanie i renderowanie odpowiedzi LLM oraz LRM
-Wyświetlenie odpowiedzi LLM w teorii jest banalne, lecz w praktyce okazuje się znacznie bardziej złożone. Odpowiedź może składać się z tokenów rozumowania (niekiedy jedynie z podsumowania), tokenów sygnalizujących korzystanie z natywnych narzędzi oraz wywołań funkcji (function calling), a także z generowanych obrazów, tekstu docelowego czy informacji o błędach. Nie chodzi zatem o zwykłą interakcję **pytanie - odpowiedź** lecz serię **zdarzeń**, które musimy obsłużyć. W przypadku OpenAI zostały one opisane w [Streaming Events](https://platform.openai.com/docs/api-reference/responses-streaming), natomiast w praktyce będzie nam zależało na dodaniu także własnych zdarzeń (np. żądanie potwierdzenia akcji).
+Wyświetlenie odpowiedzi LLM w teorii jest banalne, lecz w praktyce okazuje się znacznie bardziej złożone. Odpowiedź może składać się z tokenów rozumowania (niekiedy jedynie z podsumowania), tokenów sygnalizujących korzystanie z natywnych narzędzi oraz wywołań funkcji (function calling), a także z generowanych obrazów, tekstu docelowego czy informacji o błędach. Nie chodzi zatem o zwykłą interakcję **pytanie - odpowiedź** lecz serię **zdarzeń**, które musimy obsłużyć. W przypadku OpenAI zostały one opisane w [Streaming Events](https://developers.openai.com/api/reference/resources/responses/streaming-events), natomiast w praktyce będzie nam zależało na dodaniu także własnych zdarzeń (np. żądanie potwierdzenia akcji).
 
-![](https://cloud.overment.com/2026-01-17/ai_devs_4_rendering-a56a8eff-8.png)
+![](images/cloud.overment.com/2026-01-17/ai_devs_4_rendering-a56a8eff-8.png)
 
 Treść odpowiedzi może być także **strumieniowana**, a sam proces wstrzymywany w celu uzyskania potwierdzenia od użytkownika bądź w ramach oczekiwania na wyniki działań agentów pracujących w równoległych wątkach. Pod uwagę należy brać także formatowanie składni **markdown do HTML**, renderowanie LaTeX czy kodu, które przy strumieniowaniu mogą stanowić wyzwanie. Pojawiają się także biblioteki, takie jak [Streamdown](https://streamdown.ai/docs/getting-started) bądź [Markdown Parser](https://github.com/Simon-He95/markstream-vue/tree/main/packages/markdown-parser), które ułatwiają budowanie interfejsów po stronie front-endu. 
 
 Poza renderowaniem bloków, AI może także generować interaktywne komponenty oraz wizualizacje, co powoli zaczyna być standaryzowane poprzez [MCP Apps](https://blog.modelcontextprotocol.io/posts/2025-11-21-mcp-apps/), [Apps SDK](https://developers.openai.com/apps-sdk) czy narzędzia takie jak [JSON Render](https://github.com/vercel-labs/json-render). Przechodzimy więc od interakcji opartych o tekst, do zaawansowanych interfejsów generowanych dynamicznie. 
 
-![](https://cloud.overment.com/2026-01-17/ai_devs_4_ui-1da828db-5.png)
+![](images/cloud.overment.com/2026-01-17/ai_devs_4_ui-1da828db-5.png)
 
 Zastosowaniem powyższych możliwości zajmiemy się niebawem. Tymczasem warto zapamiętać: **interakcja z agentami niemal zawsze będzie opierała się o zdarzenia**. Zyska to szczególną rolę, przy systemach wieloagentowych zdolnych do funkcjonowania w tle.
 ## Różnice pomiędzy interfejsem użytkownika, a logiką aplikacji
@@ -125,24 +125,24 @@ Treść generowana przez LLM zwykle ma formę tekstu. Dzięki jej strukturyzowan
 
 Konkretnie:
 - LLM generuje (zwykle) tekst w ustrukturyzowanej bądź nieustrukturyzowanej formie
-- Aplikacja generuje dynamiczny interfejs, reaguje na zdarzenia (np. wywołanie narzędzi), kontroluje bieżący stan interfejsu (np. zgodę użytkownika na wykonanie akcji) oraz 
+- Aplikacja generuje dynamiczny interfejs, reaguje na zdarzenia (np. wywołanie narzędzi), kontroluje bieżący stan interfejsu (np. zgodę użytkownika na wykonanie akcji) oraz zarządza kontekstem konwersacji (np. przesyłając do modelu tylko część widocznych treści)
 - Natomiast użytkownik widzi reprezentację bieżącego stanu aplikacji, która z technicznego punktu widzenia jest daleka od oryginalnej treści generowanej przez AI
 
 Różnice między strukturą danych na back-endzie, a warstwą prezentacji są raczej normalne, ale obecność LLM jest czymś nowym, przez co łatwo popełnić błędy lub mocno utrudnić pracę. 
 
 Gdy zaczynamy budować generatywne aplikacje, zwykle zaczynamy od przetwarzania wyłącznie tekstu, a sam interfejs jest bardzo prosty. Sugeruje to, że możemy po prostu przesyłać kolejne fragmenty generowane przez LLM i wyświetlać je użytkownikowi. To proste zapisywanie treści wiadomości asystenta, szybko okazuje się poważnym ograniczeniem szczególnie gdy aplikacja działa już na produkcji. 
 
-![](https://cloud.overment.com/2026-01-17/ai_devs_4_events-b6a6066b-6.png)
+![](images/cloud.overment.com/2026-01-17/ai_devs_4_events-b6a6066b-6.png)
 
 Jakiekolwiek rozbudowanie interakcji staje się bardzo trudne, bo wymaga wprowadzenia zmian wszędzie, począwszy od bazy danych, przez logikę back-endu po front-end. A gdy z aplikacji korzystają już użytkownicy, musimy także migrować ich dane do nowych struktur. 
 
 Znacznie lepszym pomysłem jest komunikacja oparta o semantyczne zdarzenia, które zawierają nie tylko sam tekst, ale także dodatkowe informacje (np. ID, typ bądź inne metadane) pozwalające na ich grupowanie czy rozbudowanie o właściwości wymagane po stronie interfejsu. Ich rozbudowa również zwykle nie stanowi większego problemu, bo polega wyłącznie na dodaniu nowych właściwości. 
 
-![](https://cloud.overment.com/2026-01-17/ai_devs_4_semantic_events-0b1666d3-a.png)
+![](images/cloud.overment.com/2026-01-17/ai_devs_4_semantic_events-0b1666d3-a.png)
 
 Choć temat korzystania z narzędzi (Function Calling) jest jeszcze przed nami, to już teraz możemy przyjrzeć się przykładowej strukturze pokazującej, jak mogą wyglądać zdarzenia informujące o interakcji z otoczeniem. Widzimy tutaj, że ogólny schemat komunikacji pozostaje podobny, a zwykły tekst generowany przez LLM w formie semantycznych zdarzeń może być swobodnie prezentowany nawet w rozbudowanych i interaktywnych interfejsach.
 
-![](https://cloud.overment.com/2026-01-17/ai_devs_4_semantic_tools-4f395589-2.png)
+![](images/cloud.overment.com/2026-01-17/ai_devs_4_semantic_tools-4f395589-2.png)
 
 Powyższe wizualizacje jasno wskazują na ogromną rolę, jaką pełnią **semantyczne zdarzenia**. Zawierają one nie tylko podstawowe informacje zwracane przez model, lecz także dodatkowe właściwości dające nam kontrolę nad całą interakcją oraz sposobem generowania interfejsu. Oczywiście sama struktura obiektów reprezentujących te zdarzenia może się różnić w zależności od aplikacji, ale ogólne zasady pozostają takie same.
 ## Strategie wyboru dużych i mniejszych modeli w praktyce
@@ -198,7 +198,7 @@ Są to przede wszystkim:
 
 Poszczególne strategie prezentują się następująco: 
 
-![Techniki organizowania promptów w kodzie aplikacji](https://cloud.overment.com/2026-01-19/ai_devs_4_instructions-f2c596a2-1.png)
+![Techniki organizowania promptów w kodzie aplikacji](images/cloud.overment.com/2026-01-19/ai_devs_4_instructions-f2c596a2-1.png)
 
 Naturalnie nic nie stoi na przeszkodzie, aby w jednej aplikacji korzystać z więcej niż jednego z tych podejść. Może się też zdarzyć, że kwestia promptów w ogóle zostanie pominięta ze względu na narzędzia takie jak [DSPy](https://dspy.ai/) czy [Ax](https://github.com/ax-llm/ax) w przypadku których posługujemy się sygnaturami (`input` → `output`) oraz modułami, które są automatycznie zamieniane na instrukcje dla modelu.
 
@@ -210,7 +210,7 @@ Wówczas interakcja może wyglądać tak jak poniżej, czyli:
 - **Architect** może utworzyć nową umiejętność opisującą sposób generowania raportu oraz przypisać ją do agenta **Reporter**
 - Następnie **Reporter** może wygenerować raport posługując się nową umiejętnością
 
-![Dynamiczne generowanie nowych umiejętności dla agentów](https://cloud.overment.com/2026-01-19/ai_devs_4_dynamic-fb7254fd-5.png)
+![Dynamiczne generowanie nowych umiejętności dla agentów](images/cloud.overment.com/2026-01-19/ai_devs_4_dynamic-fb7254fd-5.png)
 
 Powyższa interakcja jest też powszechnie spotykana w narzędziach CLI do kodowania, takich jak [Claude Code](https://code.claude.com/). Z powodzeniem sprawdzi się także w ramach tworzonych przez nas systemów agentowych i to nawet jeśli nie będzie nam zależało na możliwości dynamicznego generowania czy edycji promptów. 
 ## Generowanie instrukcji i techniki optymalizacji z pomocą LLM
@@ -220,7 +220,7 @@ Aby się o tym przekonać wystarczy spojrzeć na publikowane prompty systemowe 
 
 Patrząc na jeden z promptów systemowych [Claude](https://claude.ai/) możemy wyróżnić szereg elementów, których obecność wpływa na doświadczenia użytkownika, a także ogólną jakość generowanych odpowiedzi. 
 
-![Techniki stosowane w instrukcjach systemowych](https://cloud.overment.com/2026-01-19/ai_devs_4_prompt-3fcfeec3-1.png)
+![Techniki stosowane w instrukcjach systemowych](images/cloud.overment.com/2026-01-19/ai_devs_4_prompt-3fcfeec3-1.png)
 
 Wyróżniamy więc tutaj:
 
@@ -239,7 +239,7 @@ W przypadku agentów AI zdolnych do samodzielnego tworzenia instrukcji dla umiej
   
 Projektowanie instrukcji dla modelu obejmuje także proces ich **debugowania** oraz **rozwoju**. Jednak w przeciwieństwie do kodu, nigdy nie wiemy dokładnie z czego wynika dane zachowanie lub w jaki sposób je wywołać. Jednocześnie mamy możliwość dodawania reguł oraz zasad, które **zwiększają prawdopodobieństwo** uzyskania pożądanych efektów, o czym możemy przekonać się jedynie obserwując zachowanie modelu. Jedną z najważniejszych zasad, którą dobrze jest się tutaj kierować jest coś, co można określić jako **generalizowanie generalizacji**. Innymi słowy nie chodzi o dodawanie specyficznych instrukcji, ani nawet ogólnych zasad, lecz kształtowanie promptu w taki sposób, aby **sterował "snem" modelu**. Temat ten będziemy poruszać wielokrotnie, ale już teraz można go zrozumieć przez poniższy przykład.
 
-![Generalizowanie instrukcji/promptów przy kształtowaniu zachowań modelu](https://cloud.overment.com/2026-01-19/ai_devs_4_generalization-b9ae6fb2-a.png)
+![Generalizowanie instrukcji/promptów przy kształtowaniu zachowań modelu](images/cloud.overment.com/2026-01-19/ai_devs_4_generalization-b9ae6fb2-a.png)
 
 Widzimy tutaj sytuację w której model wyposażony w narzędzia **add_task** i **add_event** ma wyraźny problem z ich poprawnym wyborem na podstawie jedynie prostych instrukcji użytkownika. Błędne działanie początkowo zostaje zaadresowane poprzez **regułę bezpośrednio powiązaną** z pojawiającym się błędem, co sprawia, że model nie ma z nim już problemu. Jednak w ten sposób zaadresowaliśmy tylko jeden przykład i ewentualnie to, co model jest w stanie z niego wywnioskować. 
 
@@ -251,11 +251,11 @@ Nowa wiedza oraz kształtowanie umiejętności może odbywać się poprzez tzw.
 
 Przykład promptu wykorzystującego przykłady few-shot widzimy poniżej. Instrukcja zawiera sekcję **examples** prezentującą przykładowe interakcje pomiędzy użytkownikiem, a modelem. Na ich podstawie możliwe jest rozpoznanie schematów rządzących klasyfikacją.
 
-![Przykład promptu systemowego wykorzystującego few-shot](https://cloud.overment.com/2026-02-08/ai_devs_4_few-shot-cd5dd6a1-8.png)
+![Przykład promptu systemowego wykorzystującego few-shot](images/cloud.overment.com/2026-02-08/ai_devs_4_few-shot-cd5dd6a1-8.png)
 
 Jeszcze do niedawna tworzyliśmy w tym celu sekcję w ramach instrukcji systemowej, np. `<context>` bądź `<examples>`. Obecnie jednak odbywa się to poprzez wyposażenie modelu w narzędzia umożliwiające wczytywanie treści zewnętrznych dokumentów, ale tylko wtedy, gdy jest to potrzebne. 
 
-![](https://cloud.overment.com/2026-01-19/ai_devs_4_context-9e16c9f9-f.png)
+![](images/cloud.overment.com/2026-01-19/ai_devs_4_context-9e16c9f9-f.png)
 
 Nie oznacza to jednak, że w instrukcji systemowej nie mogą znaleźć się treści sterujące zachowaniem modelu. Jednak ich charakter powinien być zdecydowanie bardziej zgeneralizowany aby z jednej strony dostarczyć istotne zasady interakcji z użytkownikiem, korzystania z narzędzi oraz eksploracji dostępnego kontekstu. Natomiast z drugiej strony instrukcja systemowa nie powinna zawierać szumu w postaci treści, które są zbędne przez większość czasu. 
 
@@ -265,7 +265,7 @@ Aby lepiej zrozumieć możliwości, które daje nam strukturyzowanie treści gen
 
 Efekt jaki chcemy osiągnąć prezentuje poniższa wizualizacja. 
 
-![Koncepcja narzędzia 'grounding'](https://cloud.overment.com/2026-01-20/ai_devs_4_hovers-31cb4284-3.png)
+![Koncepcja narzędzia 'grounding'](images/cloud.overment.com/2026-01-20/ai_devs_4_hovers-31cb4284-3.png)
 
 Aby zrealizować cel, tekst musi zostać przetworzony w kilku etapach:
 
@@ -276,7 +276,7 @@ Aby zrealizować cel, tekst musi zostać przetworzony w kilku etapach:
 
 Powyższe kroki prezentują się następująco: 
 
-![Etapy przetwarzania treści w Grounding Tool](https://cloud.overment.com/2026-01-20/ai_devs_4_grounding_pipeline-9f0f2680-a.png)
+![Etapy przetwarzania treści w Grounding Tool](images/cloud.overment.com/2026-01-20/ai_devs_4_grounding_pipeline-9f0f2680-a.png)
 
 Każdy z nich następuje po sobie i wiąże się z wysłaniem serii zapytań w celu wygenerowania **ustrukturyzowanych danych**. W pierwszym kroku chodzi nam o słowa kluczowe, w drugim o ich aliasy, w trzecim o podsumowania, a w czwartym o fragmenty HTML. Od strony kodu potrzebujemy zatem:
 
@@ -287,13 +287,13 @@ Każdy z nich następuje po sobie i wiąże się z wysłaniem serii zapytań w
 
 Struktura katalogów wygląda następująco: 
 
-![](https://cloud.overment.com/2026-01-20/ai_devs_grounding_files-bba744dd-4.png)
+![](images/cloud.overment.com/2026-01-20/ai_devs_grounding_files-bba744dd-4.png)
 
 **Ważne:** w niniejszej aplikacji dla nas istotne są jedynie **schematy JSON w katalogu "schema"** oraz **instrukcje w katalogu "prompts"**. Reszta logiki to jedynie detale implementacji, których nie ma potrzeby teraz eksplorować. Jednocześnie otworzenie kodu tego przykładu w Claude Code, Open Code bądź Cursor pozwoli na swobodne zadawanie pytań, co jest przydatne szczególnie jeśli nie pracujesz na co dzień w języku JavaScript.
 
 W przykładzie `01_01_grounding` na uwagę zasługują przede wszystkim schematy. Ich struktura została wygenerowana przez AI, więc gdy będziesz tworzyć własne schematy, również skorzystaj z pomocy modelu. Jednocześnie warto jest upewnić się, że nazwy i opisy są wystarczająco precyzyjne i zgodne z naszymi oczekiwaniami. 
 
-![](https://cloud.overment.com/2026-01-20/ai_devs_4_extract_schema-5f1c01f0-1.png)
+![](images/cloud.overment.com/2026-01-20/ai_devs_4_extract_schema-5f1c01f0-1.png)
 
 Niezależnie od tego czy zapoznasz się z kodem tego narzędzia, czy nie, chciałbym zwrócić uwagę na kilka istotnych mechanizmów, które w nim są:
 
@@ -303,14 +303,14 @@ Niezależnie od tego czy zapoznasz się z kodem tego narzędzia, czy nie, chcia
 
 Poniżej widzimy przykład działania narzędzia obejmujące **wykorzystanie pamięci podręcznej**. Po prostu gdy pliki dla danej notatki były już wygenerowane, nie ma potrzeby generować ich ponownie. 
 
-![](https://cloud.overment.com/2026-01-20/ai_devs_4_grounding_cache-2132a9ea-d.png)
+![](images/cloud.overment.com/2026-01-20/ai_devs_4_grounding_cache-2132a9ea-d.png)
 
 Efekt końcowy na przykładowej notatce można zobaczyć tutaj: [zobacz przykład](https://cloud.overment.com/ai_devs_4_grounding-1768942885.html). 
 
 ## Przykłady struktur baz danych dla czatbotów i agentów
 Początkowo generatywne aplikacje miały charakter czatbotów, co wymagało przechowywania danych w prostej strukturze **konwersacji** oraz powiązanych z nimi **wiadomości**. Pozwalało to na budowanie interfejsów czatu oraz stosowaniu modeli do budowy automatyzacji czy wywołania w logice aplikacji.
 
-![Schemat tabel 'conversations' i 'messages' dla prostego czatbota](https://cloud.overment.com/2026-01-19/ai_devs_4_structure-6162f68e-8.png)
+![Schemat tabel 'conversations' i 'messages' dla prostego czatbota](images/cloud.overment.com/2026-01-19/ai_devs_4_structure-6162f68e-8.png)
 
 Czatboty coraz częściej zastępowane są przez agentów AI zdolnych do niemal autonomicznego działania obejmującego interakcję z otoczeniem i przetwarzanie multimodalnych treści. Zwiększa się także horyzont czasowy oraz zakres i złożoność zadań, co przekłada się na potrzebę pracy asynchronicznej obejmującej system zdarzeń oraz zależności. Całość wymaga rozbudowanej komunikacji nie tylko z użytkownikiem, ale także pomiędzy agentami. Warto także rozważyć wdrożenie zaawansowanego monitorowania systemu, np. w postaci narzędzi takich jak [Langfuse](https://langfuse.com/) bądź dostępnych na rynku alternatyw.
 
@@ -322,11 +322,11 @@ Poniżej znajduje się **przykładowa struktura** bazy danych pochodząca z jedn
 
 Taka struktura umożliwia współpracę całego zespołu agentów obejmującą dwukierunkową komunikację, w tym także kontakt z użytkownikiem, np. w celu zatwierdzenia wykonania akcji.
 
-![Przykładowy schemat bazy danych dla systemu wieloagentowego](https://cloud.overment.com/2026-01-19/ai_devs_4_multiagent-e2eca7cf-8.png)
+![Przykładowy schemat bazy danych dla systemu wieloagentowego](images/cloud.overment.com/2026-01-19/ai_devs_4_multiagent-e2eca7cf-8.png)
 
 Przykładowa interakcja wykorzystująca omówiony schemat, obejmuje sesję w której użytkownik prosi o przygotowanie dziennego raportu na podstawie danych z aplikacji Linear. Agent o imieniu **Alice** zleca prośbę o jego przygotowanie do agenta **Claire** oraz zmienia swój status na "oczekujący". Następnie po otrzymaniu odpowiedzi samodzielnie wykorzystuje narzędzie do wysyłania maila, i zaraz po tym zwraca wiadomość potwierdzenia wykonanie zadania.
 
-![Multi-agent Execution Flow / Interaction](https://cloud.overment.com/2026-01-19/ai_devs_4_multiagent-work-36a980ce-d.png)
+![Multi-agent Execution Flow / Interaction](images/cloud.overment.com/2026-01-19/ai_devs_4_multiagent-work-36a980ce-d.png)
 
 Projektowanie struktur bazy danych będzie pojawiać się na przestrzeni całego szkolenia AI_devs, zatem będziemy mieć jeszcze wiele okazji na zrozumienie detali oraz eksplorację możliwych opcji. Jednocześnie już na tym etapie powyższe schematy powinny dać przynajmniej ogólny obraz rozwiązań, które będziemy budować. 
 ## Bieżący stan modeli open-source z LM Studio, ich możliwości oraz wymagania sprzętowe i przydatne opcje konfiguracji
@@ -505,3 +505,4 @@ Nazwa zadania to: **people**.
 
 1. Przed wyruszeniem w drogę trzeba zebrać drużynę modeli [https://youtu.be/X2kWqlSnX1E?list=PL6gb3F2o2zOTJYxrcnWphmGLylXIlVCGJ](https://youtu.be/X2kWqlSnX1E?list=PL6gb3F2o2zOTJYxrcnWphmGLylXIlVCGJ), [https://arxiv.org/abs/2601.05106](https://arxiv.org/abs/2601.05106)
 2. Współpraca między modelami [https://www.youtube.com/watch?v=DJI2XC71BlA&list=PL6gb3F2o2zOTJYxrcnWphmGLylXIlVCGJ&index=6](https://www.youtube.com/watch?v=DJI2XC71BlA&list=PL6gb3F2o2zOTJYxrcnWphmGLylXIlVCGJ&index=6), [https://arxiv.org/abs/2601.05167](https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbVdUZWVFdU05aEU3aDhUX0RCUWtsUGhlT2xZUXxBQ3Jtc0trdmIzNGFPY1RnUjJOaUUyczNYOGtOODltNDNXNExqMlBfQzBmRlFlVXllbTd3VlpVWXVTTlJxdUg4UmtqcW1rQUxfQXBEczdxd3JRWkJoSDVjaE1Mdjk4R2Y0ZG5sUlpnRDhuSHp5Wlg2T0tiSUVENA&q=https%3A%2F%2Farxiv.org%2Fabs%2F2601.05167&v=DJI2XC71BlA)
+
