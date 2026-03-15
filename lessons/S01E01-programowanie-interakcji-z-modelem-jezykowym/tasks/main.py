@@ -16,7 +16,7 @@ import requests
 
 load_dotenv()
 
-PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT") or "af-aidevs"
+PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT") or "your_gcp_project_id"
 LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION") or "europe-west6"
 AIDEVS_API_KEY = os.getenv("AIDEVS_API_KEY")
 
@@ -133,7 +133,7 @@ def main():
     # for i, p in enumerate(people):
     #     print(f"  {i}. {p['name']} {p['surname']} (born {p['born']}): {p['job'][:80]}...")
 
-
+    people = people[:1]
     # # Step 2: Tag with LLM (swappable backend)
     if args.backend == "adk":
         from llm_adk import tag_jobs_with_llm
