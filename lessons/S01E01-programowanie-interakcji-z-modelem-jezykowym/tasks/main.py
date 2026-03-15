@@ -133,7 +133,7 @@ def main():
     # for i, p in enumerate(people):
     #     print(f"  {i}. {p['name']} {p['surname']} (born {p['born']}): {p['job'][:80]}...")
 
-    people = people[:1]
+    #people = people[:3]
     # # Step 2: Tag with LLM (swappable backend)
     if args.backend == "adk":
         from llm_adk import tag_jobs_with_llm
