@@ -1,27 +1,29 @@
 """
 AI_Devs S01E01 - People tagging task
-Uses native google-genai SDK with Structured Output on Vertex AI.
+Single entry point with swappable LLM backends.
+
+Usage:
+    uv run main.py --backend adk        (default, uses google-genai SDK)
+    uv run main.py --backend langchain  (uses LangChain)
 """
+import argparse
 import csv
 import json
 import os
 
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-from pydantic import BaseModel
 import requests
 
 load_dotenv()
 
-PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT") or "YOUR_PROJECT_ID"
+PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT") or "your_gcp_project_id"
 LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION") or "europe-west6"
-PERSONAL_API_KEY = os.getenv("PERSONAL_API_KEY")
+AIDEVS_API_KEY = os.getenv("AIDEVS_API_KEY")
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "people.csv")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "people.csv")
 VERIFY_URL = "https://hub.ag3nts.org/verify"
 
-# Available tags for classification (add descriptions to help the model)
+# Available tags for classification (descriptions help the model classify ambiguous jobs)
 AVAILABLE_TAGS = {
     "transport": "Transport, logistics, driving, delivery, shipping, fleet management",
     # TODO: Add remaining tags from the task description here
@@ -66,47 +68,7 @@ def load_and_filter_people(path: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Tag jobs using LLM with Structured Output (batch tagging)
-# ---------------------------------------------------------------------------
-
-# TODO (Artur): Define your Pydantic model for the structured output here.
-# Example skeleton:
-#
-# class PersonTag(BaseModel):
-#     index: int
-#     tags: list[str]
-#
-# class BatchTagResponse(BaseModel):
-#     results: list[PersonTag]
-
-
-def tag_jobs_with_llm(people: list[dict]) -> list[dict]:
-    """
-    Sends job descriptions to Gemini 2.5 Flash via Vertex AI in a single batch
-    and returns the people list enriched with 'tags'.
-    """
-
-    # TODO (Artur): Initialize the Gemini client for Vertex AI
-    # client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
-
-    # TODO (Artur): Build a numbered list of job descriptions for batch tagging
-    # Example:
-    # numbered_jobs = "\n".join(
-    #     f"{i}. {p['job']}" for i, p in enumerate(people)
-    # )
-
-    # TODO (Artur): Build the prompt with tag descriptions and call the model
-    # using structured output (response_schema=BatchTagResponse)
-
-    # TODO (Artur): Map the returned tags back onto each person dict
-    # for result in response.parsed.results:
-    #     people[result.index]["tags"] = result.tags
-
-    return people
-
-
-# ---------------------------------------------------------------------------
-# Step 3: Filter for transport tag only
+# Step 2: Filter for transport tag only
 # ---------------------------------------------------------------------------
 def filter_transport(people: list[dict]) -> list[dict]:
     """Keeps only people who have 'transport' in their tags."""
@@ -114,11 +76,10 @@ def filter_transport(people: list[dict]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Step 4: Submit answer
+# Step 3: Submit answer
 # ---------------------------------------------------------------------------
 def submit_answer(people: list[dict]):
     """Sends the final answer to the verification endpoint."""
-    # Remove the 'job' field before sending - it's not part of the answer schema
     answer = []
     for p in people:
         answer.append({
@@ -131,7 +92,7 @@ def submit_answer(people: list[dict]):
         })
 
     payload = {
-        "apikey": PERSONAL_API_KEY,
+        "apikey": AIDEVS_API_KEY,
         "task": "people",
         "answer": answer,
     }
@@ -148,8 +109,17 @@ def submit_answer(people: list[dict]):
 # Main
 # ---------------------------------------------------------------------------
 def main():
-    if not PERSONAL_API_KEY:
-        print("Error: PERSONAL_API_KEY not found in .env")
+    parser = argparse.ArgumentParser(description="AI_Devs S01E01 - People tagging")
+    parser.add_argument(
+        "--backend",
+        choices=["adk", "langchain"],
+        default="adk",
+        help="LLM backend to use (default: adk)",
+    )
+    args = parser.parse_args()
+
+    if not AIDEVS_API_KEY:
+        print("Error: AIDEVS_API_KEY not found in .env")
         return
 
     # Step 1: Load & filter
@@ -159,22 +129,29 @@ def main():
         return
 
     # Print filtered people for review
-    print("\nFiltered people:")
-    for i, p in enumerate(people):
-        print(f"  {i}. {p['name']} {p['surname']} (born {p['born']}): {p['job'][:80]}...")
+    # print("\nFiltered people:")
+    # for i, p in enumerate(people):
+    #     print(f"  {i}. {p['name']} {p['surname']} (born {p['born']}): {p['job'][:80]}...")
 
-    # Step 2: Tag with LLM
-    people = tag_jobs_with_llm(people)
+    people = people[:1]
+    # # Step 2: Tag with LLM (swappable backend)
+    if args.backend == "adk":
+        from llm_adk import tag_jobs_with_llm
+    else:
+        from llm_langchain import tag_jobs_with_llm
 
-    # Step 3: Filter transport
+    print(f"\nUsing backend: {args.backend}")
+    people = tag_jobs_with_llm(people, PROJECT_ID, LOCATION, AVAILABLE_TAGS)
+
+    # # Step 3: Filter transport
     transport_people = filter_transport(people)
     print(f"\nFound {len(transport_people)} people with 'transport' tag.")
 
-    # Step 4: Submit
-    if transport_people:
-        submit_answer(transport_people)
-    else:
-        print("No transport people found. Check your tagging logic.")
+    # # Step 4: Submit
+    # if transport_people:
+    #     submit_answer(transport_people)
+    # else:
+    #     print("No transport people found. Check your tagging logic.")
 
 
 if __name__ == "__main__":
