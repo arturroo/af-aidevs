@@ -8,7 +8,9 @@ TODO (Artur): Implement the tag_jobs_with_llm function using:
 """
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import List
+from enum import Enum
 
 
 # TODO (Artur): Define your Pydantic models for the structured output here.
@@ -38,10 +40,9 @@ class JobAnalysis(BaseModel):
         min_items=1,
         description="List of tags for the jobs, selected strictly according to system definitions."
     )
-# outer scope for cacheing
-ga_client = genai.Client(vertexai=True, project=project_id, location=location)
+
 # read system message once
-system_message = open("tasks/prompts/system_message.md").read()
+system_message = open("prompts/system_message.md").read()
 
 def tag_jobs_with_llm(
     people: list[dict],
@@ -65,7 +66,8 @@ def tag_jobs_with_llm(
 
     # TODO (Artur): Initialize the Gemini client for Vertex AI
     # client = genai.Client(vertexai=True, project=project_id, location=location)
-    
+    # outer scope for cacheing
+    ga_client = genai.Client(vertexai=True, project=project_id, location=location)    
 
     # TODO (Artur): Build a numbered list of job descriptions for batch tagging
     # numbered_jobs = "\n".join(
@@ -87,6 +89,7 @@ def tag_jobs_with_llm(
     #         response_schema=BatchTagResponse,
     #     ),
     # )
+    job_description = people[0]["job"]
     prompt = f"Job description: {job_description}"
 
     response_config = types.GenerateContentConfig(
@@ -95,15 +98,28 @@ def tag_jobs_with_llm(
         top_p=0.1,
         max_output_tokens=1024,
         response_mime_type="application/json",
-        responce_schema=JobAnalysis
+        response_schema=JobAnalysis
     )
 
     response = ga_client.models.generate_content(
-        model="gemini-2.5-flash",
-        conten
+        # model="gemini-2.5-flash",
+        model="gemini-3.1-flash-lite-preview",
+        contents = prompt,
+        config = response_config
 
     )
 
+    print("RESPONSE TEXT:")
+    print(response.text)
+
+    print("RESPONSE PARSED:")
+    print(response.parsed)
+
+    print("RESPONSE USAGE_METADATA:")
+    print(response.usage_metadata)
+
+    print("RESPONSE PROMPT_FEEDBACK:")
+    print(response.prompt_feedback)
 
     # TODO (Artur): Map the returned tags back onto each person dict
     # for result in response.parsed.results:
