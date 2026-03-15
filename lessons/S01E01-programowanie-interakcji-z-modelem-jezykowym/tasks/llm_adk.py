@@ -33,6 +33,9 @@ class JobTag(str, Enum):
     FIZYCZNA = "praca fizyczna"
 
 class JobAnalysis(BaseModel):
+    index: int = Field(
+        description="Index of the job description in the input list."
+    )
     reasoning: str = Field(
         description="Brief 1-sentence justification in Polish identifying key duties."
     )
@@ -70,9 +73,9 @@ def tag_jobs_with_llm(
     ga_client = genai.Client(vertexai=True, project=project_id, location=location)    
 
     # TODO (Artur): Build a numbered list of job descriptions for batch tagging
-    # numbered_jobs = "\n".join(
-    #     f"{i}. {p['job']}" for i, p in enumerate(people)
-    # )
+    numbered_jobs = "\n".join(
+        f"{i}. {p['job']}" for i, p in enumerate(people)
+    )
 
 
     # TODO (Artur): Build the prompt with tag descriptions
@@ -89,16 +92,17 @@ def tag_jobs_with_llm(
     #         response_schema=BatchTagResponse,
     #     ),
     # )
-    job_description = people[0]["job"]
-    prompt = f"Job description: {job_description}"
+    # job_description = people[0]["job"]
+    # prompt = f"Job description: {job_description}"
+    prompt = numbered_jobs
 
     response_config = types.GenerateContentConfig(
         system_instruction=system_message,
         temperature=0,
         top_p=0.1,
-        max_output_tokens=1024,
+        max_output_tokens=8192,
         response_mime_type="application/json",
-        response_schema=JobAnalysis
+        response_schema=list[JobAnalysis]
     )
 
     response = ga_client.models.generate_content(
@@ -116,13 +120,20 @@ def tag_jobs_with_llm(
     print(response.parsed)
 
     print("RESPONSE USAGE_METADATA:")
-    print(response.usage_metadata)
+    if response.usage_metadata:
+        print(f"  Prompt tokens:     {response.usage_metadata.prompt_token_count}")
+        print(f"  Candidates tokens: {response.usage_metadata.candidates_token_count}")
+        print(f"  Total tokens:      {response.usage_metadata.total_token_count}")
+    else:
+        print("  None")
 
     print("RESPONSE PROMPT_FEEDBACK:")
     print(response.prompt_feedback)
 
-    # TODO (Artur): Map the returned tags back onto each person dict
-    # for result in response.parsed.results:
-    #     people[result.index]["tags"] = result.tags
+    
+
+    for result in response.parsed:
+        # Extract the string value from each JobTag Enum using list comprehension
+        people[result.index]["tags"] = [tag.value for tag in result.tags]
 
     return people
