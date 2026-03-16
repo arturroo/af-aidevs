@@ -1358,12 +1358,12 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "google-genai", specifier = ">=1.67.0" },
-    { name = "langchain", specifier = ">=1.2.12" },
-    { name = "langchain-google-vertexai", specifier = ">=3.2.2" },
-    { name = "pydantic", specifier = ">=2.12.5" },
-    { name = "python-dotenv", specifier = ">=1.2.2" },
-    { name = "requests", specifier = ">=2.32.5" },
+    { name = "google-genai", specifier = "==1.67.0" },
+    { name = "langchain", specifier = "==1.2.12" },
+    { name = "langchain-google-vertexai", specifier = "==3.2.2" },
+    { name = "pydantic", specifier = "==2.12.5" },
+    { name = "python-dotenv", specifier = "==1.2.2" },
+    { name = "requests", specifier = "==2.32.5" },
 ]
 
 [[package]]

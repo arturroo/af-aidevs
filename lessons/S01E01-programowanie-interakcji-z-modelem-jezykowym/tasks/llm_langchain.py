@@ -1,25 +1,13 @@
 """
 LLM backend: LangChain with ChatVertexAI and Structured Output.
-
-TODO (Artur): Implement the tag_jobs_with_llm function using:
-- ChatVertexAI(model_name="gemini-2.5-flash", ...)
-- llm.with_structured_output(YourPydanticModel)
-- Batch tagging (send all jobs in one request)
 """
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_google_vertexai import ChatVertexAI
-from pydantic import BaseModel
+from typing import List
+from data_models import JobAnalysis, JobAnalysisBatch
 
-
-# TODO (Artur): Define your Pydantic models for the structured output here.
-# Example skeleton:
-#
-# class PersonTag(BaseModel):
-#     index: int
-#     tags: list[str]
-#
-# class BatchTagResponse(BaseModel):
-#     results: list[PersonTag]
-
+# read system message once
+system_message_content = open("prompts/system_message.md").read()
 
 def tag_jobs_with_llm(
     people: list[dict],
@@ -41,31 +29,50 @@ def tag_jobs_with_llm(
         Same people list, but each dict now has a 'tags' key (list[str]).
     """
 
-    # TODO (Artur): Initialize the LangChain ChatVertexAI client
-    # llm = ChatVertexAI(
-    #     model_name="gemini-2.5-flash",
-    #     project=project_id,
-    #     location=location,
-    # )
+    # Initialize the LangChain ChatVertexAI client
+    llm = ChatVertexAI(
+        model_name="gemini-3.1-flash-lite-preview",
+        project=project_id,
+        location=location,
+        temperature=0,
+        top_p=0.1,
+        max_output_tokens=8192,
+    )
 
-    # TODO (Artur): Bind structured output to the model
-    # structured_llm = llm.with_structured_output(BatchTagResponse)
+    # Bind structured output to the model using the Batch wrapper, and include raw response to get metadata
+    structured_llm = llm.with_structured_output(JobAnalysisBatch, include_raw=True)
 
-    # TODO (Artur): Build the prompt with numbered jobs and tag descriptions
-    # numbered_jobs = "\n".join(
-    #     f"{i}. {p['job']}" for i, p in enumerate(people)
-    # )
-    # tag_descriptions = "\n".join(
-    #     f"- {name}: {desc}" for name, desc in available_tags.items()
-    # )
+    # Build the prompt with numbered jobs
+    numbered_jobs = "\n".join(
+        f"{i}. {p['job']}" for i, p in enumerate(people)
+    )
 
-    # TODO (Artur): Call the model
-    # response = structured_llm.invoke(
-    #     f"... your prompt with {numbered_jobs} and {tag_descriptions} ..."
-    # )
+    # Call the model
+    print(f"Sending batch request with {len(people)} jobs via LangChain...")
+    response_data = structured_llm.invoke([
+        SystemMessage(content=system_message_content),
+        HumanMessage(content=numbered_jobs)
+    ])
 
-    # TODO (Artur): Map the returned tags back onto each person dict
-    # for result in response.results:
-    #     people[result.index]["tags"] = result.tags
+    batch_response = response_data["parsed"]
+    raw_response = response_data["raw"]
+
+    print("RESPONSE PARSED:")
+    print(batch_response)
+
+
+    # Map the returned tags back onto each person dict
+    for result in batch_response.results:
+        # Extract the string value from each JobTag Enum using list comprehension
+        people[result.index]["tags"] = [tag.value for tag in result.tags]
+
+    print("RESPONSE USAGE_METADATA:")
+    if hasattr(raw_response, 'usage_metadata') and raw_response.usage_metadata:
+        usage = raw_response.usage_metadata
+        print(f"  Prompt tokens:     {usage.get('input_tokens', 'N/A')}")
+        print(f"  Candidates tokens: {usage.get('output_tokens', 'N/A')}")
+        print(f"  Total tokens:      {usage.get('total_tokens', 'N/A')}")
+    else:
+        print("  None")
 
     return people

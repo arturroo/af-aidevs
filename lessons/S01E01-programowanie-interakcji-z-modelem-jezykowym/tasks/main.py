@@ -135,8 +135,8 @@ def main():
 
     #people = people[:3]
     # # Step 2: Tag with LLM (swappable backend)
-    if args.backend == "adk":
-        from llm_adk import tag_jobs_with_llm
+    if args.backend == "sdk":
+        from llm_sdk import tag_jobs_with_llm
     else:
         from llm_langchain import tag_jobs_with_llm
 
@@ -145,13 +145,17 @@ def main():
 
     # # Step 3: Filter transport
     transport_people = filter_transport(people)
-    print(f"\nFound {len(transport_people)} people with 'transport' tag.")
+    print(f"\nFound {len(transport_people)} people with 'transport' tag:")
+    for p in transport_people:
+        print(f"\n- {p['name']} {p['surname']}")
+        print(f"  Job: {p['job']}")
+        print(f"  Assigned Tags: {p['tags']}")
 
     # # Step 4: Submit
-    # if transport_people:
-    #     submit_answer(transport_people)
-    # else:
-    #     print("No transport people found. Check your tagging logic.")
+    if transport_people:
+        submit_answer(transport_people)
+    else:
+        print("No transport people found. Check your tagging logic.")
 
 
 if __name__ == "__main__":
