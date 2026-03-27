@@ -26,21 +26,41 @@ def run_agent_langchain(people, tools_list):
         "Gdy upewnisz się czy osoba była blisko, pobierz dla niej z API accessLevel i zwróć w pożądanym formacie JSON: {'name': '...', 'surname': '...', 'accessLevel': ..., 'powerPlant': '...'}"
     )
     
-    # -----------------------------------------------------------------------
-    # TODO dla Artura: Konfiguracja Agent-a za pomocą LangChain!
-    # Narzędzia z Pythona idealnie potrafią zgrywać się w LangChainie (przy pomocy pydantica czy docstringów).
-    # 1. Zbuduj instancję agenta z wpiętymi narzędziami:
-    #    agent = llm.bind_tools(tools_list)
-    # 2. Utwórz listę logów `messages = [SystemMessage(content=system_instruction), HumanMessage(content="...")]`
-    # 3. Zaczyna się pętla. Odpytaj `response = agent.invoke(messages)`. Dołóż to na listę messages.
-    # 4. Sprawdź `if response.tool_calls:`. Jeśli prawda - Langchain fajnie to parsuje z JSONa funkcyjnego na dict pod ".tool_calls".
-    #    Dla każdej funkcji w iteracji można ją odpalić od razu podając słownik argumentów jako listę kwargs (**args_dict).
-    #    Należy wynik zawinąć w `ToolMessage(content=wynik_python, tool_call_id=tutaj_podaj_oryginalne_id)` i dodać do history list messages!
-    # Alternatywnie dla ambitnych: Przenieś ten model do `create_react_agent` bazującym na module `langgraph.prebuilt` by wykonać całą mechanikę w dwóch małych linijkach ukrywając pętlę while!
-    # -----------------------------------------------------------------------
+    suspects_text = "\n".join([f"- {p['name']} {p['surname']}. Rok urodzenia: {p['born']}" for p in people])
+    user_message = f"Oto lista podejrzanych wytypowanych przez system. Zbadaj ich wszystkich po kolei pobierając ich lokacje i sprawdzając kto był absolutnie najbliżej dowolnej elektrowni. Kiedy znajdziesz osobę, dla której ten dystans jest GLOBLANIE najmniejszy, pobierz jej poziom dostępu i wyślij finalny raport poprzez funkcję submit_investigation_result:\n{suspects_text}"
     
-    for person in people:
-        print(f"\n[LangChain] Detektyw sprawdza profil: {person['name']} {person['surname']} (ur. {person['born']})")
+    from langchain.agents import create_tool_calling_agent, AgentExecutor
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.tools import tool
+    
+    # Konwersja czystych funkcji Pythona na narzędzia rozumiene przez Langchain
+    lc_tools = [tool(f) for f in tools_list]
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_instruction),
+        ("human", "{input}"),
+        ("placeholder", "{agent_scratchpad}"),
+    ])
+    
+    # Tworzymy agenta
+    agent = create_tool_calling_agent(llm, lc_tools, prompt)
+    
+    # Tworzymy pętlę wykonawczą (Orchestrator Langchainowy)
+    agent_executor = AgentExecutor(agent=agent, tools=lc_tools, verbose=True, max_iterations=30)
+    
+    print("\n[LangChain] Agent rozpoczyna globalne badanie przy użyciu AgentExecutor ReAct...")
+    
+    try:
+        agent_executor.invoke({"input": user_message})
+    except Exception as e:
+        print(f"[LangChain] Błąd podczas działania agenta: {e}")
         
-        print("[TODO] Architektura pętli wykonawczej (ReAct Loop) dla LangChain uśpiona i czeka na implementację w llm_langchain.py!")
-        break # Czekamy na Artura
+    # Wczytujemy finalny plik, by zwrócić sygnał do głównego pętli main.py (identycznie jak w genai)
+    from pathlib import Path
+    submit_file = Path(__file__).parent / "data" / "result_submit.json"
+    if submit_file.exists():
+        return {
+            "status": "FINAL_ANSWER_SAVED_TO_DISK",
+            "file_path": str(submit_file)
+        }
+    return None
