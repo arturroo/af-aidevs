@@ -51,22 +51,19 @@ def find_closest_plant(file_id: str) -> str:
     closest_city = None
     plant_code = None
     
-    if "locations" not in person_locations.get("message", "{}"):
-        # The structure is directly a dict with message? We should check API response format.
-        # Format returns: {"message": "Locations found", "locations": [{"lat": 50.1, "lon": 19.3}, ...]}
-        pass
-        
-    locs = person_locations.get("locations", [])
-    if not locs and "message" in person_locations:
-        locs = person_locations.get("message", {}).get("locations", [])
-        
-    if not locs:
-        # Fallback if the body is a direct list
-        locs = person_locations if isinstance(person_locations, list) else []
+    # Zabezpieczone parsowanie (plik może być listą słowników lub słownikiem z listą)
+    if isinstance(person_locations, list):
+        locs = person_locations
+    elif isinstance(person_locations, dict):
+        locs = person_locations.get("locations", [])
+        if not locs and isinstance(person_locations.get("message"), dict):
+            locs = person_locations["message"].get("locations", [])
+    else:
+        locs = []
         
     for p_loc in locs:
-        p_lat = p_loc.get("lat")
-        p_lon = p_loc.get("lon")
+        p_lat = p_loc.get("latitude")
+        p_lon = p_loc.get("longitude")
         
         if p_lat is None or p_lon is None: continue
         
@@ -84,4 +81,4 @@ def find_closest_plant(file_id: str) -> str:
     if closest_distance < 20:  # Zwykle elektrownia to bliskość paru kilometrów, bezpieczny buffor 20km
         return f"Znaleziono powiązanie! Osoba znajdowała się zaledwie {closest_distance:.1f} km od elektrowni '{closest_city}'. Jej kod, którego będziesz potrzebować do zweryfikowania śledczego to: {plant_code}."
     else:
-        return f"Ta osoba jest "czysta". Najbliższa elektrownia znajdowała się aż {closest_distance:.1f} km od jej miejsc logowania, nie stanowi podejrzeń."
+        return f"Ta osoba jest 'czysta'. Najbliższa elektrownia znajdowała się aż {closest_distance:.1f} km od jej miejsc logowania, nie stanowi podejrzeń."
