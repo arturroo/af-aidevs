@@ -18,11 +18,15 @@ def haversine(lat1, lon1, lat2, lon2):
     
     return R * c
 
-def find_closest_plant(file_id: str) -> str:
+def find_closest_plant(file_id: str, reasoning: str) -> str:
     """
     Kalkulator przyjmujący identyfikator pliku z lokalizacjami danej osoby, porównujący je 
     względem współrzędnych Elektrowni zapisanych w naszym lokalnym środowisku, by sprawdzić
     czy badana osoba była chociaż raz w bliskiej odległości.
+    
+    Args:
+        file_id: Identyfikator pliku (np. loc_Jan_Kowalski).
+        reasoning: Krótkie uzasadnienie agenta (Chain of Thought), dlaczego wywołuje to narzędzie (np. "Muszę sprawdzić odległość dla osoby XYZ...").
     """
     base_dir = Path(__file__).parent.parent.absolute()
     
@@ -78,7 +82,17 @@ def find_closest_plant(file_id: str) -> str:
                 closest_city = city
                 plant_code = info.get("code")
                 
+    # Wydobywamy "Personę/Zmienną śledztwa" z nazwy pliku
+    osoba = safe_file_id.replace("loc_", "").replace(".json", "").replace("_", " ")
+
+    # ---------------------------------------------------------------------------------------------------------
+    # [BEST PRACTICE Z PRODUKCJI - CONTEXT THREADING / TRACEABILITY]
+    # LLM wysłał nam tylko 'file_id', więc ryzykujemy, że zapomni do kogo należał plik w nawale danych.
+    # Wstrzykujemy wydobytą personę ręcznie w prefix odpowiedzi, redukując Context Drift.
+    # ---------------------------------------------------------------------------------------------------------
+    prefix = f"[Śledztwo: {osoba}]"
+                
     if closest_distance < 20:  # Zwykle elektrownia to bliskość paru kilometrów, bezpieczny buffor 20km
-        return f"Znaleziono powiązanie! Osoba znajdowała się zaledwie {closest_distance:.1f} km od elektrowni '{closest_city}'. Jej kod, którego będziesz potrzebować do zweryfikowania śledczego to: {plant_code}."
+        return f"{prefix} Znaleziono powiązanie! Osoba znajdowała się zaledwie {closest_distance:.1f} km od elektrowni '{closest_city}'. Jej kod, którego będziesz potrzebować do zweryfikowania śledczego to: {plant_code}."
     else:
-        return f"Ta osoba jest 'czysta'. Najbliższa elektrownia znajdowała się aż {closest_distance:.1f} km od jej miejsc logowania, nie stanowi podejrzeń."
+        return f"{prefix} Ta osoba jest 'czysta'. Najbliższa elektrownia znajdowała się aż {closest_distance:.1f} km od jej miejsc logowania, nie stanowi podejrzeń."

@@ -19,9 +19,10 @@ load_dotenv()
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT") or "your_gcp_project_id"
 LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION") or "europe-west6"
 AIDEVS_API_KEY = os.getenv("AIDEVS_API_KEY")
+AIDEVS_API_VERIFY = os.getenv("AIDEVS_API_VERIFY")
 
 DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "people.csv")
-VERIFY_URL = "https://***REMOVED***/verify"
+VERIFY_URL = AIDEVS_API_VERIFY
 
 # Available tags for classification (descriptions help the model classify ambiguous jobs)
 AVAILABLE_TAGS = {

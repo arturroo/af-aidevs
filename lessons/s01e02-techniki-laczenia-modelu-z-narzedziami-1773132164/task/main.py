@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+import asyncio
 from pathlib import Path
 import importlib
 from dotenv import load_dotenv
@@ -61,7 +62,7 @@ def discover_tools():
     
     return tools_list
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description="Zadanie findhim - System Agentowy w stylu S01E01")
     parser.add_argument("--backend", choices=["genai", "langchain"], default="genai", help="Wybór frameworka do użycia w operacji operacyjnej (domyślnie google-genai)")
     args = parser.parse_args()
@@ -88,6 +89,7 @@ def main():
     tools = discover_tools()
     import requests
     AIDEVS_API_KEY = os.getenv("AIDEVS_API_KEY")
+    AIDEVS_API_VERIFY = os.getenv("AIDEVS_API_VERIFY")
 
     if args.backend == "genai":
         from llm_genai import run_agent_genai
@@ -118,7 +120,7 @@ def main():
                 print(f"[Orchestrator] BŁĄD WALIDACJI DANYCH OD LLM! Przerwano próbę wysyłki: {e}")
                 return
             
-            url = "https://***REMOVED***/verify"
+            url = AIDEVS_API_VERIFY
             payload = {
                 "apikey": AIDEVS_API_KEY,
                 "task": "findhim",
@@ -145,7 +147,7 @@ def main():
             print("=======================================================\n")
     else:
         from llm_langchain import run_agent_langchain
-        run_agent_langchain(people, tools)
+        await run_agent_langchain(people, tools)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

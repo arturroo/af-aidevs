@@ -7,6 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 load_dotenv()
 AIDEVS_API_KEY = os.getenv("AIDEVS_API_KEY")
+AIDEVS_API_LOCATION = os.getenv("AIDEVS_API_LOCATION")
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=10))
 def _make_api_request(url, payload):
@@ -19,10 +20,15 @@ def _make_api_request(url, payload):
     return response.json()
 AIDEVS_API_KEY = os.getenv("AIDEVS_API_KEY")
 
-def get_person_locations(name: str, surname: str) -> str:
+def get_person_locations(name: str, surname: str, reasoning: str) -> str:
     """
     Pobiera historię lokalizacji (współrzędne) podejrzanej osoby i zapisuje je w bezpiecznym sandboxie (pliku JSON).
     Zwraca agentowi id stworzonego pliku bez wyjawiania fizycznych ścieżek na dysku.
+    
+    Args:
+        name: Imię podejrzanego.
+        surname: Nazwisko podejrzanego.
+        reasoning: Krótkie uzasadnienie agenta (Chain of Thought), dlaczego wywołuje to narzędzie (np. "Pobieram lokacje by sprawdzić gdzie bywał").
     """
     # Sandboxing - narzucamy stałe miejsce przechowywania
     base_dir = Path(__file__).parent.parent.absolute()
@@ -32,12 +38,20 @@ def get_person_locations(name: str, surname: str) -> str:
     file_id = f"loc_{name}_{surname}"
     file_path = sandbox_dir / f"{file_id}.json"
     
+    # ---------------------------------------------------------------------------------------------------------
+    # [BEST PRACTICE Z PRODUKCJI - CONTEXT THREADING / TRACEABILITY]
+    # Wstrzykujemy silne zakotwiczenie podmiotu w outputach na każdym etapie przetwarzania
+    # pozwalając zminimalizować efekt tzw "Context Driftu".
+    # ---------------------------------------------------------------------------------------------------------
+    prefix = f"[Śledztwo: {name} {surname}]"
+    success_msg = f"{prefix} Sukces. Pomyślnie pobrano 10 punktów (współrzędnych) lokacji, w których poruszała się ta osoba. Zostały one przez nas przechwycone i zrzucone na twój system plików. Od tej pory możesz operować nimi odwołując się do identyfikatora pliku: '{file_id}'."
+
     # 1. Caching: Sprawdzamy, czy plik już istnieje
     if file_path.exists():
         print(f"[get_person_locations] Plik {file_id}.json już istnieje. Używam cache.")
-        return f"Sukces. Pomyślnie pobrano 10 punktów (współrzędnych) lokacji, w których poruszała się ta osoba. Zostały one przez nas przechwycone i zrzucone na twój system plików. Od tej pory możesz operować nimi odwołując się do identyfikatora pliku: '{file_id}'."
+        return success_msg
 
-    url = "https://***REMOVED***"
+    url = AIDEVS_API_LOCATION
     payload = {
         "apikey": AIDEVS_API_KEY,
         "name": name,
@@ -48,12 +62,10 @@ def get_person_locations(name: str, surname: str) -> str:
     try:
         data = _make_api_request(url, payload)
     except Exception as e:
-        return f"Błąd pobierania danych z API (przekroczono liczbę prób): {e}"
-    
-
+        return f"{prefix} Błąd pobierania danych z API (przekroczono liczbę prób): {e}"
     
     # Zapis
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
         
-    return f"Sukces. Pomyślnie pobrano 10 punktów (współrzędnych) lokacji, w których poruszała się ta osoba. Zostały one przez nas przechwycone i zrzucone na twój system plików. Od tej pory możesz operować nimi odwołując się do identyfikatora pliku: '{file_id}'."
+    return success_msg
