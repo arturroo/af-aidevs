@@ -226,3 +226,5 @@ secret*.tfvars
 # Images
 **/images/
 
+check_secret*.py
+download_images.py
