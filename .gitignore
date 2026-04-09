@@ -3,6 +3,7 @@
 
 # lmd
 **/lessons/*/s*.md
+AID4_S*md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
