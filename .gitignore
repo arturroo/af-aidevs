@@ -215,6 +215,7 @@ __marimo__/
 
 # Terraform
 .terraform/
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
 *.tfvars
@@ -229,3 +230,6 @@ secret*.tfvars
 
 check_secret*.py
 download_images.py
+# Terraform Zips
+**/.zips/
+/terraform/.zips/
