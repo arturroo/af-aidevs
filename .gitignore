@@ -3,6 +3,7 @@
 
 # lmd
 **/lessons/*/s*.md
+AID4_S*md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -214,6 +215,7 @@ __marimo__/
 
 # Terraform
 .terraform/
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
 *.tfvars
@@ -228,3 +230,6 @@ secret*.tfvars
 
 check_secret*.py
 download_images.py
+# Terraform Zips
+**/.zips/
+/terraform/.zips/
