@@ -169,6 +169,21 @@ variable "cf_names" {
         #     }
         #     trigger_type = "http" # or "pubsub"
         # }
+        "cf-s01e03-mcp" = {
+            source_dir   = "./lessons/s01e03-projektowanie-api-dla-efektywnej-pracy-z-modelem/task/cf-s01e03-mcp-server-api-compaction"
+            entry_point  = "main"
+            memory       = "256Mi"
+            public       = false  # Private HTTP endpoint per your request
+            env          = {
+                LOG_LEVEL = "DEBUG"
+                BQ_AUDIT_TABLE = "bq-s01e03-audit"
+            }
+            secrets      = {
+                AIDEVS_API_KEY = "secret-s01e03-aidevs-apikey"
+                AIDEVS_API_PACKAGES_URL = "secret-s01e03-packages-url"
+            }
+            trigger_type = "http"
+        }
     }
 }
 
@@ -191,6 +206,20 @@ variable "cr_names" {
         #         "service-account-key" = "/var/secrets/sa-key"
         #     }
         # }
+        "cr-s01e03-agent" = {
+            source_dir    = "./lessons/s01e03-projektowanie-api-dla-efektywnej-pracy-z-modelem/task/cr-s01e03-proxy-agent"
+            cpu           = "1"
+            memory        = "512Mi"
+            public        = false
+            max_instances = 1
+            env           = {
+                BACKEND = "langchain"
+                BQ_AUDIT_TABLE = "bq-s01e03-audit"
+            }
+            secrets       = {
+                AIDEVS_MCP_HTTP_URL = "secret-s01e03-mcp-url"
+            }
+        }
     }
 }
 
