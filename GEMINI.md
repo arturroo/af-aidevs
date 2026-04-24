@@ -13,8 +13,9 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
   - *Why?* This ensures alphabetical sorting perfectly matches chronological order, while keeping the context (the title) immediately visible without needing to open the folder to see what it's about.
 
 - **Markdown Files:** The primary notes file inside the directory should simply be named `lesson.md` or `notes.md` to avoid redundant paths (like `S01E01-title/S01E01-title.md`), though keeping the downloaded markdown name as-is (e.g., `s01e01-programowanie...md`) is also perfectly fine if downloaded directly from the course platform.
+- **BigQuery:** Always create tables for a particular lesson in a BigQuery dataset named after that lesson (e.g., dataset `s01e03`).
 - GCP standards: BigQuery (`bq`), Firestore (`fs`), Cloud Functions entry point is always `main()`.
-- LLM Default: We use **Gemini 2.5 Flash** on **Vertex AI** via the modern `google-genai` SDK.
+- LLM Default: We use **Gemini 3.1 Flash Lite Preview** (`gemini-3.1-flash-lite-preview`) on **Vertex AI** via the modern `google-genai` SDK. Default location is `GOOGLE_CLOUD_LOCATION=global`.
 - Python package management: `uv` only. `pyproject.toml` or `requirements.txt` must use precise library versions (no `^` operators).
 
 ### Security & Privacy
@@ -23,6 +24,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - The `AIDEVS_API_KEY` secret itself must be stored in GCP Secret Manager for deployed services, and in a local `.env` file for local development only.
 - When writing documentation or PRDs, refer to endpoints as their env var name only. Example: use `$AIDEVS_API_VERIFY` — never paste the actual URL.
 - This rule exists to respect the course authors' intellectual property and prevent API endpoint leakage in public repositories.
+- **Environment Variables Parsing:** Always use `os.getenv("VAR") or "default"` in Python instead of `os.environ.get("VAR", "default")`. This protects against accidentally exported empty strings from `.env` files overriding the defaults.
 
 ### Infrastructure (Terraform)
 - **Scope:** All Terraform code is centralized in the `/terraform` folder using standard Google Cloud Terraform module structures.

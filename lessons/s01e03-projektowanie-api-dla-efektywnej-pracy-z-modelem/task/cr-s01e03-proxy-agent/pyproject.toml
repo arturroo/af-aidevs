@@ -1,0 +1,18 @@
+[project]
+name = "cr-s01e03-proxy-agent"
+version = "0.1.0"
+description = "AI Proxy Agent for Logistics Operator"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "fastapi==0.136.1",
+    "uvicorn==0.46.0",
+    "langchain==1.2.15",
+    "langchain-google-vertexai==3.2.2",
+    "google-cloud-aiplatform==1.148.1",
+    "mcp==1.27.0",
+    "google-cloud-bigquery==3.41.0",
+    "google-cloud-secret-manager==2.27.0",
+    "python-dotenv==1.2.2",
+    "python-frontmatter==1.1.0",
+]

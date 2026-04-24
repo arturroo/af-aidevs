@@ -192,3 +192,4 @@ resource "google_bigquery_table" "dependent_view" {
     ]
 }
 
+

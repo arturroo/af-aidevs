@@ -1,0 +1,15 @@
+[project]
+name = "cf-s01e03-mcp-server-api-compaction"
+version = "0.1.0"
+description = "MCP Tools Server for AI Proxy Agent"
+requires-python = "==3.12.*"
+dependencies = [
+    "fastapi==0.115.6",
+    "fastmcp==0.4.1",
+    "mcp==1.1.2",
+    "google-cloud-bigquery==3.27.0",
+    "google-cloud-secret-manager==2.22.0",
+    "python-dotenv==1.0.1",
+    "functions-framework>=3.10.1",
+    "uvicorn>=0.46.0",
+]

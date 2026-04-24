@@ -25,7 +25,7 @@ graph TD
         CF -->|Pobieranie kluczy 🔐| SM
     end
 
-    subgraph Zewnętrzne API (AIDEVS_API_*)
+    subgraph Zewnętrzne API AIDEVS
         CF -->|API Call: check & redirect 📦| API[Package API]
     end
     
@@ -56,8 +56,9 @@ Usługa HTTP na Cloud Run będzie zarządzać tożsamością każdego operatora 
 Główna logika aplikacji przyjmująca zapytania REST. 
 - Aplikacja **FastAPI** lub zwykły serwer uvicorn.
 - **Implementacja dwóch bibliotek (Framework Switch):**
-  - **LangChain:** Domyślny backend spinający konwersację; automatycznie strumieniujący trace'y do LangSmith.
-  - **Google GenAI SDK:** *Zwykła lekka biblioteka Google, która służy wyłącznie po to aby "przekładać" żądania do API. Nie ma swojego inteligentnego odpowiednika śledzenia jak LangSmith. Jej monitoring opiera się jedynie na klasycznym wysyłaniu logów wejścia i wyjścia natywnie do Google Cloud Logging.*
+  - **LangChain:** Domyślny backend spinający konwersację; automatycznie strumieniujący trace'y do LangSmith. Obsługuje pętlę agenta (LangSmith agent loop) - pozwoli na przypomnienie i prześledzenie pełnego obiegu akcji i obserwacji agenta.
+  - **ADK (Vertex AI SDK / Google GenAI SDK):** Zastosowanie profesjonalnego standardu Google. Implementacja musi wykorzystywać dostępne "out of the box" mechanizmy observability i monitoringu (np. natywne integracje z Google Cloud Logging, Cloud Monitoring, Vertex AI Tracing), aby umożliwić rzetelne porównanie z możliwościami LangSmith.
+  - Oczekuje się zaimplementowania logiki, w której backend używany do obsługi wiadomości może być przełączony flagą `--backend langchain|adk`.
 
 ### 3.3 Serwer MCP (Cloud Functions)
 Wyizolowany serwer narzędzi wdrażany jako usługa z wejściem publicznym (z ograniczonym dostępem do IAM/Token). Wykorzysta bibliotekę `fastmcp`.
@@ -84,16 +85,27 @@ Po wygenerowaniu kodu `Confirmation`:
 
 ---
 
-## 4. Plan Plików w Katalogu Task 📂
+## 4. Plan Plików w Katalogu Task 📂 / Boilerplate
 
-W folderze `c:\Users\admin\git\arturroo\af-aidevs\lessons\s01e03-projektowanie-api-dla-efektywnej-pracy-z-modelem\task\` powstaną następujące pliki:
+W folderze `lessons\s01e03-projektowanie-api-dla-efektywnej-pracy-z-modelem\task\` powstaną następujące pliki tworzące strukturalny **boilerplate do eksperymentowania i nauki**:
+
+> [!IMPORTANT]
+> **Deployment odbywa się wyłącznie przez Terraform.** Cloud Run (`cr-s01e03-agent`) i Cloud Functions (`cf-s01e03-mcp`) konfigurowane są przez zmienne `cr_names` i `cf_names` w `/terraform/variables.tf`. Brak ręcznych skryptów `gcloud`.
 
 | Plik                      | Opis                         |
 |---------------------------|------------------------------|
-| `pyproject.toml`          | Plik zależności UV (uv only). |
-| `main.py`                 | Usługa Cloud Run z Agentem, logiką pamięci i przesyłania do BQ. |
-| `main_mcp.py`             | Osobna aplikacja FastMCP gotowa pod wdrażanie jako usługa na Cloud Functions. Musi zawierać `main()`. |
-| `deploy.sh`               | Prosty skrypt bash (KISS) wgrywający CR oraz CF poprzez komendy gcloud. Będzie wymuszać `--max-instances=1` na CR. |
-| `submit_result.sh`        | Ręczny trigger wysyłający kod ukończenia na Ag3nts (HitL). |
+| `pyproject.toml`          | Plik zależności UV (uv only). Będzie zawierał pakiety dla LangChain oraz dla ADK/Vertex AI. |
+| `main.py`                 | Usługa Cloud Run. Musi zawierać przełącznik `--backend` i przygotowaną strukturę metod pod LangChain (z podpiętym LangSmith) oraz pod ADK (z profesjonalnym monitoringiem Google Cloud "out of the box"). |
+| `agent_langchain.py`      | Boilerplate pętli agenta w LangChain, aby można było łatwo połączyć to z LangSmith i prześledzić agent loop. |
+| `agent_adk.py`            | Boilerplate dla Agenta z wykorzystaniem ADK, z zachowaniem standardów monitorowania w logach i traces. |
+| `main_mcp.py`             | Osobna aplikacja FastMCP gotowa pod wdrażanie jako usługa na Cloud Functions lub Cloud Run. Musi zawierać `main()`. |
+| `system_message.md`       | Konfiguracja modelu (Frontmatter) oraz szczegółowa instrukcja systemowa dla agenta logistycznego. Popraw jesli trzeba. |
+| `submit_result.sh`        | Ręczny trigger wysyłający kod ukończenia na serwery walidacyjne (HitL). |
 
-*Wszystkie polecenia `npm` nie mają tu zastosowania, a jeśli zajdzie potrzeba (np dla serwera MCP ze standardu JS) - Arturze, poinformuję Cię jak to uruchomić ręcznie.*
+**Główne cele edukacyjne podczas pracy z boilerplate:**
+1. Przyswojenie materiału z lekcji poprzez uzupełnianie brakujących logik biznesowych aplikacji.
+2. Poznanie podstaw biblioteki ADK z ekosystemu Google.
+3. Rzeczywiste porównanie na dashboardach rozwiązań obserwowalności i monitoringu oferowanych przez ADK vs LangSmith.
+4. Utrwalenie działania pętli decyzyjnej agenta LangChain i jej wizualizacji w LangSmith.
+
+*Wszystkie polecenia `npm` nie mają tu zastosowania.*

@@ -44,6 +44,9 @@ variable "datasets" {
         #     description = "Raw data from banks"
         #     max_time_travel_hours = 168
         # }
+        "s01e03" = {
+            description = "Dataset for S01E03 tasks"
+        }
     }
 }
 
@@ -65,6 +68,11 @@ variable "internal_tables" {
         #     }
         #     
         # }
+        "audit" = {
+            description = "Audit logs for S01E03 proxy agent and MCP server"
+            dataset_id = "s01e03"
+            schema = "bq-schemas/s01e03.audit.json"
+        }
     }
 }
 
@@ -191,6 +199,42 @@ variable "cr_names" {
         #         "service-account-key" = "/var/secrets/sa-key"
         #     }
         # }
+        "cr-s01e03-mcp-server" = {
+            source_dir   = "../lessons/s01e03-projektowanie-api-dla-efektywnej-pracy-z-modelem/task/cr-s01e03-mcp-server"
+            cpu           = "1"
+            memory       = "512Mi"
+            public       = true # it should be private and in agent should use google.auth.transport.requests library to generate OIDC token for Cloud Run authentication
+            cpu_throttling = true
+            max_instances = 1
+            env          = {
+                LOG_LEVEL = "DEBUG"
+                BQ_AUDIT_TABLE = "af-aidevs.s01e03.audit"
+            }
+            secrets      = {
+                AIDEVS_API_KEY = "AIDEVS_API_KEY"
+                AIDEVS_API_PACKAGES = "AIDEVS_API_PACKAGES"
+            }
+        }
+        "cr-s01e03-agent" = {
+            source_dir    = "../lessons/s01e03-projektowanie-api-dla-efektywnej-pracy-z-modelem/task/cr-s01e03-proxy-agent"
+            cpu           = "1"
+            memory        = "512Mi"
+            public        = false
+            cpu_throttling = true
+            max_instances = 1
+            env           = {
+                BACKEND = "langchain"
+                BQ_AUDIT_TABLE = "af-aidevs.s01e03.audit"
+                LANGSMITH_TRACING = "true"
+                LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
+                GOOGLE_CLOUD_LOCATION = "global"
+                MCP_SERVER_URL = "https://cr-s01e03-mcp-server-qsvqxjqyrq-oa.a.run.app"
+            }
+            secrets       = {
+                LANGSMITH_API_KEY = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT = "LANGSMITH_PROJECT"
+            }
+        }
     }
 }
 
