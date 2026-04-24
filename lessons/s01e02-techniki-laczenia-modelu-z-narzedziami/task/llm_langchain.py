@@ -14,8 +14,8 @@ async def run_agent_langchain(people, tools_list):
     Funkcja demonstrująca "State of the Art" w obsłudze agentów w ekosystemie LangChain (LangGraph).
     Pozbywamy się jakiejkolwiek ręcznej pętli czy nasłuchiwania - LangGraph robi wszystko pod spodem.
     """
-    PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT") or "your_gcp_project_here"
-    LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION") or "europe-west6"
+    PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "af-aidevs")
+    LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "europe-west6")
 
     # Używamy pełnoprawnego Vertex AI
     llm = ChatVertexAI(

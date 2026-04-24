@@ -19,6 +19,9 @@ resource "google_storage_bucket_object" "zip" {
   bucket       = var.gcf_bucket
 }
 
+
+
+
 # Create the Gen2 Cloud function
 resource "google_cloudfunctions2_function" "cf" {
   for_each = var.cf_names

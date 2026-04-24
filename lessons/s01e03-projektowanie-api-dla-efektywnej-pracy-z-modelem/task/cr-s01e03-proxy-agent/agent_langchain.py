@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from langchain_google_vertexai import ChatVertexAI
-from langchain.schema import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from google.cloud import bigquery
 
 # We can import MCP tools if we want to run natively via FastMCP instance
@@ -16,38 +16,17 @@ logger.setLevel(logging.INFO)
 
 # BigQuery Logging
 bq_client = bigquery.Client()
-AUDIT_TABLE_ID = os.environ.get("BQ_AUDIT_TABLE", "bq-s01e03-audit")
+AUDIT_TABLE_ID = os.getenv("BQ_AUDIT_TABLE") or "bq-s01e03-audit"
 
-# System message parsing
-SYSTEM_PROMPT = ""
-try:
-    with open("system_message.md", "r", encoding="utf-8") as f:
-        # Simplistic parsing skipping frontmatter based on '---'
-        lines = f.readlines()
-        in_frontmatter = False
-        content_lines = []
-        for i, line in enumerate(lines):
-            if line.strip() == "---":
-                if i == 0:
-                    in_frontmatter = True
-                    continue
-                elif in_frontmatter:
-                    in_frontmatter = False
-                    continue
-            if not in_frontmatter:
-                content_lines.append(line)
-        SYSTEM_PROMPT = "".join(content_lines).strip()
-except Exception as e:
-    logger.error(f"Failed to load system_message.md: {e}")
-    SYSTEM_PROMPT = "You are a helpful assistant."
-
+from config import load_system_message
+SYSTEM_MESSAGE, METADATA = load_system_message()
 # Retrieve MCP Server URL from ENV if we use SSE approach
-MCP_SERVER_URL = os.environ["AIDEVS_MCP_HTTP_URL"]
+MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
 
 def create_session(session_id: str):
     return {
         "session_id": session_id,
-        "messages": [SystemMessage(content=SYSTEM_PROMPT)]
+        "messages": [SystemMessage(content=SYSTEM_MESSAGE)]
     }
 
 async def mcp_call_tool(tool_name: str, args: dict):
@@ -86,9 +65,16 @@ async def process_message(session_data: dict, msg: str) -> str:
     
     # 2. Setup llm
     # We use preview model from system_message.md
+    env_loc = os.getenv("GOOGLE_CLOUD_LOCATION")
+    print(f"==== DEBUG ==== GOOGLE_CLOUD_LOCATION env var is: {env_loc}", flush=True)
+    location = METADATA.get("model_region") or os.getenv("GOOGLE_CLOUD_LOCATION", "global")
+    
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "af-aidevs")
     llm = ChatVertexAI(
-        model_name="gemini-3.1-flash-lite-preview",
-        temperature=0.1
+        model_name=METADATA.get("model_name", "gemini-3.1-flash-lite-preview"),
+        temperature=METADATA.get("temperature", 0.1),
+        location=location,
+        project=project_id
     )
     
     # For a fully dynamic MCP integration, one pulls tools from MCP first.
@@ -102,7 +88,15 @@ async def process_message(session_data: dict, msg: str) -> str:
     # Very basic return logic, assuming we don't process tool calling logic inside this stub
     # The student will expand this to handle tool_calls.
     
-    msg_out = response.content
+    # Extract string from complex content block (e.g. Gemini 3.1 thought signatures)
+    if isinstance(response.content, list):
+        msg_out = "".join(
+            block.get("text", "") if isinstance(block, dict) else str(block)
+            for block in response.content
+        )
+    else:
+        msg_out = str(response.content)
+        
     messages.append(AIMessage(content=msg_out))
     log_to_bq(session_id, "agent", msg_out)
     

@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import vertexai
-from vertexai.generative_models import GenerativeModel, ChatSession, Content, Part
+from vertexai.generative_models import GenerativeModel, ChatSession, Content, Part, GenerationConfig
 from google.cloud import bigquery
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
@@ -12,38 +12,30 @@ logger.setLevel(logging.INFO)
 
 # BigQuery Logging
 bq_client = bigquery.Client()
-AUDIT_TABLE_ID = os.environ.get("BQ_AUDIT_TABLE", "bq-s01e03-audit")
+AUDIT_TABLE_ID = os.getenv("BQ_AUDIT_TABLE") or "bq-s01e03-audit"
 
-# System message parsing
-SYSTEM_PROMPT = ""
-try:
-    with open("system_message.md", "r", encoding="utf-8") as f:
-        lines = f.readlines()
-        in_frontmatter = False
-        content_lines = []
-        for i, line in enumerate(lines):
-            if line.strip() == "---":
-                if i == 0:
-                    in_frontmatter = True
-                    continue
-                elif in_frontmatter:
-                    in_frontmatter = False
-                    continue
-            if not in_frontmatter:
-                content_lines.append(line)
-        SYSTEM_PROMPT = "".join(content_lines).strip()
-except Exception as e:
-    logger.error(f"Failed to load system_message.md: {e}")
-    SYSTEM_PROMPT = "You are a helpful assistant."
-
-MCP_SERVER_URL = os.environ["AIDEVS_MCP_HTTP_URL"]
+from config import load_system_message
+SYSTEM_MESSAGE, METADATA = load_system_message()
+MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
 
 # Vertex AI Initialization
-# Make sure to set GOOGLE_CLOUD_PROJECT or have ADC properly configured.
-vertexai.init()
+project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "af-aidevs")
+env_loc = os.getenv("GOOGLE_CLOUD_LOCATION")
+print(f"==== DEBUG ==== GOOGLE_CLOUD_LOCATION env var is: {env_loc}", flush=True)
+location = METADATA.get("model_region") or os.getenv("GOOGLE_CLOUD_LOCATION", "global")
+vertexai.init(project=project_id, location=location)
+
+generation_config = GenerationConfig(
+    temperature=METADATA.get("temperature", 0.1),
+    top_p=METADATA.get("top_p", 0.95),
+    top_k=METADATA.get("top_k", 4),
+    max_output_tokens=METADATA.get("max_output_tokens", 8192),
+)
+
 model = GenerativeModel(
-    "gemini-3.1-flash-lite-preview",
-    system_instruction=[SYSTEM_PROMPT]
+    METADATA.get("model_name", "gemini-3.1-flash-lite-preview"),
+    system_instruction=[SYSTEM_MESSAGE],
+    generation_config=generation_config
 )
 
 def create_session(session_id: str):

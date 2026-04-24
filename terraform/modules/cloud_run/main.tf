@@ -40,13 +40,13 @@ resource "google_storage_bucket_object" "zip" {
 resource "terraform_data" "build_image" {
   for_each = var.cr_names
   
-  input = {
+  triggers_replace = {
     zip_name = google_storage_bucket_object.zip[each.key].name
     md5      = data.archive_file.cr_source[each.key].output_md5
   }
 
   provisioner "local-exec" {
-    command = "gcloud builds submit --project ${var.project_id} --tag ${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:latest gs://${var.source_bucket}/${google_storage_bucket_object.zip[each.key].name}"
+    command = "gcloud builds submit --project ${var.project_id} --pack image=${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:${data.archive_file.cr_source[each.key].output_md5} gs://${var.source_bucket}/${google_storage_bucket_object.zip[each.key].name}"
   }
 
   depends_on = [google_storage_bucket_object.zip]
@@ -61,9 +61,13 @@ resource "google_cloud_run_v2_service" "cr" {
   project  = var.project_id
 
   template {
+    annotations = {
+      "run.googleapis.com/cpu-throttling" = tostring(try(each.value.cpu_throttling, true))
+    }
+    
     containers {
-      # Points to the image built by Cloud Build
-      image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:latest"
+      # Points to the image built by Cloud Build, uniquely tagged with source code MD5
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:${data.archive_file.cr_source[each.key].output_md5}"
       
       dynamic "env" {
         for_each = try(each.value.env, {})
@@ -116,16 +120,24 @@ resource "google_cloud_run_v2_service" "cr" {
       }
     }
     
-    max_instance_request_concurrency = try(each.value.concurrency, 80)
+    max_instance_request_concurrency = try(each.value.concurrency, 1)
     
     scaling {
-      max_instance_count = try(each.value.max_instances, 5)
+      max_instance_count = try(each.value.max_instances, 1)
       min_instance_count = try(each.value.min_instances, 0)
     }
   }
 
   # Ensure build completes before deploying/updating
   depends_on = [terraform_data.build_image]
+
+  lifecycle {
+    ignore_changes = [
+      invoker_iam_disabled,
+      client,
+      client_version
+    ]
+  }
 }
 
 # Access Control (Restricted by default)

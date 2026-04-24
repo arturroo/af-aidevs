@@ -9,11 +9,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp_server")
 
 bq_client = bigquery.Client()
-AUDIT_TABLE_ID = os.environ.get("BQ_AUDIT_TABLE", "bq-s01e03-audit")
+AUDIT_TABLE_ID = os.getenv("BQ_AUDIT_TABLE") or "bq-s01e03-audit"
 
 mcp = FastMCP("Hub-Packages-MCP")
 
-AIDEVS_API_PACKAGES_URL = os.environ["AIDEVS_API_PACKAGES_URL"]
+AIDEVS_API_PACKAGES = os.environ["AIDEVS_API_PACKAGES"]
 AIDEVS_API_KEY = os.environ["AIDEVS_API_KEY"]
 
 def log_to_bq(action: str, details: dict):
@@ -42,7 +42,7 @@ def check_package(packageid: str) -> str:
     }
     
     req = urllib.request.Request(
-        AIDEVS_API_PACKAGES_URL,
+        AIDEVS_API_PACKAGES,
         data=json.dumps(data).encode('utf-8'),
         headers={'Content-Type': 'application/json'}
     )
@@ -70,7 +70,7 @@ def redirect_package(packageid: str, destination: str, code: str) -> str:
     }
     
     req = urllib.request.Request(
-        AIDEVS_API_PACKAGES_URL,
+        AIDEVS_API_PACKAGES,
         data=json.dumps(data).encode('utf-8'),
         headers={'Content-Type': 'application/json'}
     )
