@@ -206,6 +206,8 @@ variable "cr_names" {
             public       = true # it should be private and in agent should use google.auth.transport.requests library to generate OIDC token for Cloud Run authentication
             cpu_throttling = true
             max_instances = 1
+            concurrency   = 10
+            session_affinity = true
             env          = {
                 LOG_LEVEL = "DEBUG"
                 BQ_AUDIT_TABLE = "af-aidevs.s01e03.audit"
@@ -227,7 +229,6 @@ variable "cr_names" {
                 BQ_AUDIT_TABLE = "af-aidevs.s01e03.audit"
                 LANGSMITH_TRACING = "true"
                 LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
-                GOOGLE_CLOUD_LOCATION = "global"
                 MCP_SERVER_URL = "https://cr-s01e03-mcp-server-qsvqxjqyrq-oa.a.run.app"
             }
             secrets       = {

@@ -8,11 +8,10 @@ dependencies = [
     "fastapi==0.136.1",
     "uvicorn==0.46.0",
     "langchain==1.2.15",
-    "langchain-google-vertexai==3.2.2",
-    "google-cloud-aiplatform==1.148.1",
+    "langchain-google-genai==4.2.2",
     "mcp==1.27.0",
+    "fastmcp==3.2.4",
     "google-cloud-bigquery==3.41.0",
-    "google-cloud-secret-manager==2.27.0",
     "python-dotenv==1.2.2",
     "python-frontmatter==1.1.0",
 ]
