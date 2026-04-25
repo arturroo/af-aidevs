@@ -4,6 +4,10 @@ import urllib.request
 import logging
 from google.cloud import bigquery
 from fastmcp import FastMCP
+from contextvars import ContextVar
+
+# ContextVar to store session_id across the request lifespan
+session_id_ctx: ContextVar[str] = ContextVar("session_id", default="unknown")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp_server")
@@ -18,7 +22,13 @@ AIDEVS_API_KEY = os.environ["AIDEVS_API_KEY"]
 
 def log_to_bq(action: str, details: dict):
     try:
-        row = {"action": action, "details": json.dumps(details)}
+        # Retrieve session_id from context
+        session_id = session_id_ctx.get()
+        row = {
+            "session_id": session_id,
+            "action": action, 
+            "details": json.dumps(details)
+        }
         if "." in AUDIT_TABLE_ID:
             errors = bq_client.insert_rows_json(AUDIT_TABLE_ID, [row])
             if errors:
@@ -35,21 +45,22 @@ def validate_package_id(packageid: str) -> tuple[bool, str]:
     Validates if packageid follows the PKG + 8 digits format.
     Returns (True, "") if valid, or (False, error_description) if invalid.
     """
+    # Strict match
     if re.match(r"^PKG\d{8}$", packageid):
         return True, ""
     
-    # Detailed checks for better feedback
-    if not packageid.startswith("PKG"):
-        return False, f"The ID '{packageid}' is missing the required 'PKG' prefix."
+    # Fuzzy matching to help the LLM explain the error
+    clean_id = packageid.strip().upper()
+    prefix = f"Provided package id '{packageid}' is invalid. "
+    if "PKG" in clean_id:
+        match = re.search(r"PKG\s*\d+", clean_id)
+        if match:
+            found = match.group(0)
+            if len(found) == 11: # PKG + 8 digits
+                return False, prefix + f"The ID looks almost correct ('{found}'), but there are extra characters or it's incorrectly placed."
+            return False, prefix + f"I found a partial match '{found}', but it doesn't have exactly 8 digits."
     
-    rest = packageid[3:]
-    if not rest.isdigit():
-        return False, f"The ID '{packageid}' contains non-digit characters ('{rest}') after the 'PKG' prefix."
-    
-    if len(rest) != 8:
-        return False, f"The ID '{packageid}' has {len(rest)} digits, but exactly 8 digits are required after 'PKG'."
-    
-    return False, f"The ID '{packageid}' does not match the required PKGXXXXXXXX format."
+    return False, prefix + "It must be exactly 'PKG' followed by 8 digits (e.g., PKG12345678). Analyze the user's input and explain what's wrong."
 
 @mcp.tool()
 def check_package(packageid: str) -> str:
@@ -66,10 +77,10 @@ def check_package(packageid: str) -> str:
     is_valid, error_detail = validate_package_id(packageid)
     if not is_valid:
         return json.dumps({
-            "error": "Invalid package ID format.",
+            "status": "error",
+            "error": "Validation failed",
             "details": error_detail,
-            "hint": "Please ask the operator for the correct ID. It must be in the format 'PKG' followed by 8 digits (e.g., PKG12345678).",
-            "corrections_attempted": corrections
+            "instruction_for_model": "Analyze the provided input and the error details. If you are able to fix the package id to the right format then fix it and try again else explain to the user exactly what is wrong with their package ID (e.g., missing prefix, wrong length, typo) in a concise, human-like way."
         })
 
     if not AIDEVS_API_KEY:
@@ -121,10 +132,10 @@ def redirect_package(packageid: str, destination: str, code: str) -> str:
     is_valid, error_detail = validate_package_id(packageid)
     if not is_valid:
         return json.dumps({
-            "error": "Invalid package ID format.",
+            "status": "error",
+            "error": "Validation failed",
             "details": error_detail,
-            "hint": "The redirection cannot be processed with an invalid ID. Please verify the ID format with the operator.",
-            "corrections_attempted": corrections
+            "instruction_for_model": "Analyze the provided input and the error details. If you are able to fix the package id to the right format then fix it and try again else explain to the user exactly what is wrong with their package ID (e.g., missing prefix, wrong length, typo) in a concise, human-like way."
         })
 
     if not AIDEVS_API_KEY:
@@ -170,8 +181,24 @@ def redirect_package(packageid: str, destination: str, code: str) -> str:
 
 # Expose FastAPI app as "main" for the Cloud Run / Cloud Functions
 # In fastmcp 3.x, we can tune the Streamable HTTP transport.
-# We increase max_sessions to allow more concurrent tests/clients.
 main = mcp.http_app()
+
+# Middleware to extract session_id from headers
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+async def session_id_middleware(request: Request, call_next):
+    # Extract X-Session-ID from headers
+    session_id = request.headers.get("X-Session-ID", "unknown")
+    token = session_id_ctx.set(session_id)
+    try:
+        response = await call_next(request)
+    finally:
+        session_id_ctx.reset(token)
+    return response
+
+# Add the middleware to the Starlette app
+main.add_middleware(BaseHTTPMiddleware, dispatch=session_id_middleware)
 
 
 

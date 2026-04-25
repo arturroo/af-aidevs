@@ -28,12 +28,12 @@ vertexai.init(project=project_id, location=location)
 generation_config = GenerationConfig(
     temperature=METADATA.get("temperature", 0.1),
     top_p=METADATA.get("top_p", 0.95),
-    top_k=METADATA.get("top_k", 4),
-    max_output_tokens=METADATA.get("max_output_tokens", 8192),
+    top_k=METADATA.get("top_k", 40),
+    max_output_tokens=METADATA.get("max_output_tokens", 1000),
 )
 
 model = GenerativeModel(
-    METADATA.get("model_name", "gemini-3.1-flash-lite-preview"),
+    METADATA.get("model", "gemini-3-flash-preview"),
     system_instruction=[SYSTEM_MESSAGE],
     generation_config=generation_config
 )

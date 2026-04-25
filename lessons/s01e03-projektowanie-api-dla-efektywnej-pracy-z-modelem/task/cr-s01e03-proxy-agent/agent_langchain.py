@@ -24,26 +24,20 @@ SYSTEM_MESSAGE, METADATA = load_system_message()
 # Retrieve MCP Server URL from ENV if we use SSE approach
 MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
 
-@tool
-async def check_package(packageid: str) -> str:
-    """Check the contents and current destination of a package."""
-    return await mcp_call_tool("check_package", {"packageid": packageid})
-
-@tool
-async def redirect_package(packageid: str, destination: str, code: str) -> str:
-    """Redirect a package using the confirmation code obtained from the operator."""
-    return await mcp_call_tool("redirect_package", {"packageid": packageid, "destination": destination, "code": code})
-
 def create_session(session_id: str):
     return {
         "session_id": session_id,
         "messages": [SystemMessage(content=SYSTEM_MESSAGE)]
     }
 
-async def mcp_call_tool(tool_name: str, args: dict):
+async def mcp_call_tool(tool_name: str, args: dict, session_id: str = "unknown"):
     # Use FastMCP native client with Streamable HTTP transport
     mcp_endpoint = f"{MCP_SERVER_URL}/mcp"
-    transport = StreamableHttpTransport(url=mcp_endpoint)
+    # We pass session_id in headers so the MCP server can log it to BQ
+    transport = StreamableHttpTransport(
+        url=mcp_endpoint, 
+        headers={"X-Session-ID": session_id}
+    )
     
     try:
         async with FastMCPClient(transport) as client:
@@ -84,14 +78,25 @@ async def process_message(session_data: dict, msg: str) -> str:
     
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or "af-aidevs"
     llm = ChatGoogleGenerativeAI(
-        model=METADATA.get("model", "gemini-3.1-flash-lite-preview"),
+        model=METADATA.get("model", "gemini-3-flash-preview"),
         temperature=METADATA.get("temperature", 0.1),
+        max_output_tokens=METADATA.get("max_output_tokens", 1000),
         location=location,
         project=project_id,
         vertexai=True
     )
     
-    # Fully dynamic MCP integration - tools are proxying to MCP server
+    # Fully dynamic MCP integration - tools are defined here to capture session_id
+    @tool
+    async def check_package(packageid: str) -> str:
+        """Check the contents and current destination of a package."""
+        return await mcp_call_tool("check_package", {"packageid": packageid}, session_id=session_id)
+
+    @tool
+    async def redirect_package(packageid: str, destination: str, code: str) -> str:
+        """Redirect a package using the confirmation code obtained from the operator."""
+        return await mcp_call_tool("redirect_package", {"packageid": packageid, "destination": destination, "code": code}, session_id=session_id)
+
     tools = [check_package, redirect_package]
     
     # We use the factory mentioned by the user
@@ -103,10 +108,14 @@ async def process_message(session_data: dict, msg: str) -> str:
     
     # Since tools are async, we MUST use ainvoke
     proxy_agent_run = await proxy_agent_graph.ainvoke({"messages": messages})
-    print(f"==== DEBUG ==== proxy_agent_run is: {proxy_agent_run}", flush=True)
-
-    # 3. Extract output message and handle complex content (list of blocks)
-    last_ai_msg = proxy_agent_run.get("messages", [])[-1]
+    
+    # CRITICAL: Update the session messages with the FULL history returned by the agent
+    # This ensures ToolCalls and ToolResults are preserved for the next turn
+    new_messages = proxy_agent_run.get("messages", [])
+    session_data["messages"] = new_messages
+    
+    # 3. Extract final output message for the user response
+    last_ai_msg = new_messages[-1]
     
     if isinstance(last_ai_msg.content, list):
         msg_out = "".join(
@@ -116,8 +125,7 @@ async def process_message(session_data: dict, msg: str) -> str:
     else:
         msg_out = str(last_ai_msg.content)
     
-    # 4. Update session history and log
-    messages.append(AIMessage(content=msg_out))
+    # 4. Log the final agent response to BQ (history is already updated above)
     log_to_bq(session_id, "agent", msg_out)
     
     return msg_out
