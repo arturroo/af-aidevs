@@ -43,3 +43,5 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - If in the task you see possibility to use other technlogies like LangGraph, LangSmith, Google ADK, MCP, A2A, etc. you have to always first ask Artur if he wants to use them. If he agrees, you have to implement them in the task boilerplate code.
 - If the task requires it, use fastmcp to create an MCP server and use it in the task boilerplate code.
 
+### TODO
+- [ ] Migrate `system_message.md` and tool hints/instructions to **Vertex AI Prompt Management** to allow dynamic updates without Cloud Run redeployment.
