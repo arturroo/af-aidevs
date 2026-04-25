@@ -120,12 +120,14 @@ resource "google_cloud_run_v2_service" "cr" {
       }
     }
     
-    max_instance_request_concurrency = try(each.value.concurrency, 1)
+    session_affinity = try(each.value.session_affinity, false)
+    max_instance_request_concurrency = try(each.value.concurrency, 80)
     
     scaling {
       max_instance_count = try(each.value.max_instances, 1)
       min_instance_count = try(each.value.min_instances, 0)
     }
+
   }
 
   # Ensure build completes before deploying/updating

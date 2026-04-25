@@ -1,8 +1,7 @@
 ---
-model_name: gemini-3.1-flash-lite-preview
-temperature: 0.1
+model: gemini-3.1-flash-lite-preview
+temperature: 0.2
 top_p: 0.95
-top_k: 4
 max_output_tokens: 8192
 model_region: global
 ---
