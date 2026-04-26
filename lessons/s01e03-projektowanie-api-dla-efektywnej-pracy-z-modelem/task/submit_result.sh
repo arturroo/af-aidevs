@@ -5,12 +5,14 @@
 
 AIDEVS_VERIFY=${AIDEVS_VERIFY:?"Błąd: Zmienna AIDEVS_VERIFY nie jest ustawiona."}
 AIDEVS_API_KEY=${AIDEVS_API_KEY:?"Błąd: Zmienna AIDEVS_API_KEY nie jest ustawiona."}
+URL=${PROXY_AGENT_URL:?"Błąd: Zmienna PROXY_AGENT_URL nie jest ustawiona."}
+SID=${SID:?"Błąd: Zmienna SID nie jest ustawiona."}
 
-echo "Podaj Twój Publiczny URL endpointa (Agent HTTP Server):"
-read URL
-
-echo "Podaj dowolne SessionID, którego chcesz użyć podczas testu:"
-read SID
+# echo "Podaj Twój Publiczny URL endpointa (Agent HTTP Server):"
+# read URL
+# 
+# echo "Podaj dowolne SessionID, którego chcesz użyć podczas testu:"
+# read SID
 
 DATA=$(cat <<EOF
 {

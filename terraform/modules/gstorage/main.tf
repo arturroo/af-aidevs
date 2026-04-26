@@ -13,7 +13,7 @@ resource "google_storage_bucket" "bucket" {
     force_destroy   = try(each.value["force_destroy"], false)
     labels          = try(each.value["labels"], {})
     location        = try(each.value["location"], "europe-west6")
-    name            = "${var.project_id}-${each.key}"
+    name            = try(each.value["exact_name"], "${var.project_id}-${each.key}")
     project         = var.project_id
     public_access_prevention = "enforced"
     requester_pays  = try(each.value["requester_pays"], false)
