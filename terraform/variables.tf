@@ -22,6 +22,9 @@ variable "buckets" {
         #     force_destroy = false
         # }
         "gcf" = {}
+        # "af-aidevs" = {
+        #     exact_name = "af-aidevs"
+        # }
 
     }
 }
