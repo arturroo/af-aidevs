@@ -10,7 +10,7 @@ echo "Podaj Twój Publiczny URL endpointa (Agent HTTP Server):"
 read URL
 
 echo "Podaj dowolne SessionID, którego chcesz użyć podczas testu:"
-read SESSIONID
+read SID
 
 DATA=$(cat <<EOF
 {
@@ -18,7 +18,7 @@ DATA=$(cat <<EOF
   "task": "proxy",
   "answer": {
     "url": "$URL",
-    "sessionID": "$SESSIONID"
+    "sessionID": "$SID"
   }
 }
 EOF

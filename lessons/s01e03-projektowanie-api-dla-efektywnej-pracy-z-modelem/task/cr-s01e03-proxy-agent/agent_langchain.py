@@ -93,9 +93,11 @@ async def process_message(session_data: dict, msg: str) -> str:
         return await mcp_call_tool("check_package", {"packageid": packageid}, session_id=session_id)
 
     @tool
-    async def redirect_package(packageid: str, destination: str, code: str) -> str:
-        """Redirect a package using the confirmation code obtained from the operator."""
-        return await mcp_call_tool("redirect_package", {"packageid": packageid, "destination": destination, "code": code}, session_id=session_id)
+    async def redirect_package(packageid: str, current_destination: str, destination: str, code: str) -> str:
+        """Redirect a package using the confirmation code obtained from the operator.
+        You MUST provide the 'current_destination' which you obtained from the 'check_package' tool to ensure you are not overwriting a changed package state.
+        """
+        return await mcp_call_tool("redirect_package", {"packageid": packageid, "current_destination": current_destination, "destination": destination, "code": code}, session_id=session_id)
 
     tools = [check_package, redirect_package]
     

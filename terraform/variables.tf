@@ -221,7 +221,7 @@ variable "cr_names" {
             source_dir    = "../lessons/s01e03-projektowanie-api-dla-efektywnej-pracy-z-modelem/task/cr-s01e03-proxy-agent"
             cpu           = "1"
             memory        = "512Mi"
-            public        = false
+            public        = true
             cpu_throttling = true
             max_instances = 1
             env           = {
