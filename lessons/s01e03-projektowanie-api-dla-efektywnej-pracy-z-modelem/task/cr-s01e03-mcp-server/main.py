@@ -20,6 +20,9 @@ mcp = FastMCP("Hub-Packages-MCP")
 AIDEVS_API_PACKAGES = os.environ["AIDEVS_API_PACKAGES"]
 AIDEVS_API_KEY = os.environ["AIDEVS_API_KEY"]
 
+
+PACKAGE_ID_REGEXP = "^PKG\d{8}$"
+
 def log_to_bq(action: str, details: dict):
     try:
         # Retrieve session_id from context
@@ -46,12 +49,12 @@ def validate_package_id(packageid: str) -> tuple[bool, str]:
     Returns (True, "") if valid, or (False, error_description) if invalid.
     """
     # Strict match
-    if re.match(r"^PKG\d{8}$", packageid):
+    if re.match(PACKAGE_ID_REGEXP, packageid):
         return True, ""
     
     # Fuzzy matching to help the LLM explain the error
     clean_id = packageid.strip().upper()
-    prefix = f"Provided package id '{packageid}' is invalid. "
+    prefix = f"Provided package id '{packageid}' is invalid. Proper format is 'PKG' followed by 8 digits (e.g., PKG12345678)."
     if "PKG" in clean_id:
         match = re.search(r"PKG\s*\d+", clean_id)
         if match:
@@ -60,7 +63,7 @@ def validate_package_id(packageid: str) -> tuple[bool, str]:
                 return False, prefix + f"The ID looks almost correct ('{found}'), but there are extra characters or it's incorrectly placed."
             return False, prefix + f"I found a partial match '{found}', but it doesn't have exactly 8 digits."
     
-    return False, prefix + "It must be exactly 'PKG' followed by 8 digits (e.g., PKG12345678). Analyze the user's input and explain what's wrong."
+    return False, prefix
 
 @mcp.tool()
 def check_package(packageid: str) -> str:
@@ -79,8 +82,7 @@ def check_package(packageid: str) -> str:
         return json.dumps({
             "status": "error",
             "error": "Validation failed",
-            "details": error_detail,
-            "instruction_for_model": "Analyze the provided input and the error details. If you are able to fix the package id to the right format then fix it and try again else explain to the user exactly what is wrong with their package ID (e.g., missing prefix, wrong length, typo) in a concise, human-like way."
+            "details": error_detail
         })
 
     if not AIDEVS_API_KEY:
@@ -118,8 +120,10 @@ def check_package(packageid: str) -> str:
         return json.dumps({"error": error_msg, "corrections_attempted": corrections})
 
 @mcp.tool()
-def redirect_package(packageid: str, destination: str, code: str) -> str:
-    """Redirect a package using the confirmation code obtained from the operator."""
+def redirect_package(packageid: str, current_destination: str, destination: str, code: str) -> str:
+    """Redirect a package using the confirmation code obtained from the operator.
+    You MUST provide the 'current_destination' which you obtained from the 'check_package' tool to ensure you are not overwriting a changed package state.
+    """
     corrections = []
     # Normalize to uppercase and track
     if any(c.islower() for c in packageid):
@@ -127,15 +131,14 @@ def redirect_package(packageid: str, destination: str, code: str) -> str:
         packageid = packageid.upper()
         corrections.append(f"Normalized package ID from '{old_id}' to uppercase '{packageid}'.")
 
-    log_to_bq("redirect_package_attempt", {"packageid": packageid, "destination": destination, "code": code, "corrections": corrections})
+    log_to_bq("redirect_package_attempt", {"packageid": packageid, "current_destination": current_destination, "destination": destination, "code": code, "corrections": corrections})
     
     is_valid, error_detail = validate_package_id(packageid)
     if not is_valid:
         return json.dumps({
             "status": "error",
             "error": "Validation failed",
-            "details": error_detail,
-            "instruction_for_model": "Analyze the provided input and the error details. If you are able to fix the package id to the right format then fix it and try again else explain to the user exactly what is wrong with their package ID (e.g., missing prefix, wrong length, typo) in a concise, human-like way."
+            "details": error_detail
         })
 
     if not AIDEVS_API_KEY:
@@ -149,6 +152,7 @@ def redirect_package(packageid: str, destination: str, code: str) -> str:
         "code": code
     }
 
+    print(f"Redirecting package id '{packageid}' from '{current_destination}' to '{destination}'", flush=True)
     req = urllib.request.Request(
         AIDEVS_API_PACKAGES,
         data=json.dumps(data).encode('utf-8'),
