@@ -2,8 +2,8 @@
 **/data/
 
 # lmd
-**/lessons/*/s*.md
-AID4_S*md
+**/lessons/*/s??e??-*.md
+AID4_S??E?? *.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
