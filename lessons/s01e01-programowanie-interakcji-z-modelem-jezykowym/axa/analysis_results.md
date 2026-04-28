@@ -16,7 +16,7 @@ Zgodnie z lekcją S01E01, kluczowym wyzwaniem jest łączenie dwóch sprzecznych
 ### Kluczowe zasady z lekcji:
 - **Zarządzanie Kontekstem:** Sterowanie AI to w rzeczywistości programistyczne zarządzanie tym, co trafia do "okna kontekstowego".
 - **Autoregresja:** Model nie może "cofnąć" wygenerowanego tokenu. Błąd na początku generowania psuje cały wynik.
-- **Agent:** To nie tylko czat, to LLM wyposażony w **narzędzia** (Tools) i zdolny do elastycznej interakcji z otoczeniem.
+- **Agent:** To nie tylko czat, to LLM wyposażony w **narzędzia** (Tools) i zdolny do elastycznej interakcji z otoczeniem przez te narzedzia.
 
 ## 2. Rozszerzenie: Wybór typu AI (Wytyczne Google & Anthropic)
 Gdy już zdecydujesz, że tradycyjny kod to za mało, użyj poniższych kryteriów do wyboru rodzaju AI:

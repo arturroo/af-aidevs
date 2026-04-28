@@ -4,11 +4,17 @@
 
 | Kryterium | Tradycyjny Kod (Determinizm) | Model / Agent AI (Probabilistyka) |
 | :--- | :--- | :--- |
-| **Gwarancja** | 100% powtarzalności (A -> B) | Brak gwarancji (Wynik prawdopodobny) |
-| **Zastosowanie** | Logika, RegEx, obliczenia, SQL | Dane nieustrukturyzowane, rozumowanie |
-| **Zasada** | **Pierwszy wybór** (Efektywność) | **Ostateczność** (Last Resort) |
-| **Koszt** | Stały / Minimalny (CPU) | Wysoki (płacimy za każdy **token**) |
-| **Błędy** | Łatwe do debugowania | Trudne (Autoregresja - brak "cofnij") |
+| **Główny cel** | Precyzyjna egzekucja instrukcji | Autonomiczne osiągnięcie celu (Goal-oriented) |
+| **Zasada** | **Pierwszy wybór (Najwyższe ROI).** Jeśli da się coś zrobić kodem — zrób to kodem. | **Ostateczność (Last Resort).** Używaj tylko tam, gdzie kod zawodzi. |
+| **Gwarancja** | 100% powtarzalności (A -> B) | Brak gwarancji. Wymaga obsługi ryzyka błędu. |
+| **Stabilność procesu** | W pełni zdefiniowany i stały (np. faktury) | Dynamiczny, ewoluujący, niejednoznaczny (np. ChatBot) |
+| **Precyzja** | Krytyczna (Finanse, Compliance, 100%) | Niuansowanie, kontekst, interpretacja treści (np. streszczenia PDF) |
+| **Opóźnienie (Latency)** | Milisekundy (Real-time) | Sekundy/Minuty (NRT - Near Real Time), zależne od długości odpowiedzi i szybkości generowania tokenów |
+| **Logika** | Liniowa (if-then-else) | Rozumowanie, planowanie, adaptacja do nieprzewidywalnego kontekstu i intencji |
+| **Zastosowanie** | Algorytmy, RegEx, SQL (np. stałe formaty dat) | Dane nieustrukturyzowane, intencje (wyliczanie dat z kontekstu, np. "Spotkajmy się w przyszły piątek") |
+| **Koszt** | Stały / Minimalny (CPU, Memory) | Wysoki (płacimy za każdy **token**) |
+| **Błędy** | Logiczne (Łatwe do debugowania) | Halucynacje, błędy w rozumowaniu, Autoregresja (brak "cofnij" w trakcie generowania tokenów) |
+| **Dane wejściowe** | Ustrukturyzowane, czyste | Nieustrukturyzowane, niejednoznaczne |
 
 ---
 
@@ -17,10 +23,16 @@
 
 ---
 
-### Rekomendacja: Strategia Hybrydowa (The Google Way)
-Nie wybieraj między AI a Kodem. Łącz je:
-1. **Predictive AI** (Tradycyjne) – do twardych prognoz i liczb.
-2. **Generative AI** (Agent) – do interpretacji tych prognoz i kontaktu z ludźmi.
+### Kluczowe zasady z lekcji:
+- **Autoregresja:** Model nie może "cofnąć" wygenerowanego tokenu. Błąd na początku generowania psuje cały wynik.
+- **Agent:** To nie tylko czat, to LLM wyposażony w **narzędzia** (Tools) i zdolny do elastycznej interakcji z otoczeniem przez te narzędzia.
 
-**Zasada GTM (Go-To-Market):** Jeśli nie masz czasu na zbieranie ogromnych zbiorów danych do trenowania tradycyjnego AI — użyj Agenta z odpowiednim promptem, by szybciej dowieźć wartość biznesową.
+---
 
+## Rozszerzenie: Kiedy AI Workflow, a kiedy AI Agent?
+Gdy tradycyjny kod to za mało, wybierz odpowiedni stopień autonomii AI:
+
+### Anthropic (Workflow vs. Agent)
+- **AI Workflow:** Używaj, gdy proces da się zamknąć w stałych krokach (sztywny łańcuch promptów).
+- **AI Agent:** Używaj tylko wtedy, gdy ścieżka do celu jest nieznana i wymaga autonomicznego podejmowania decyzji w pętli.
+- [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) – Kluczowy artykuł o przejściu z prostych workflowów do zaawansowanych agentów.
