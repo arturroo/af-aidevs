@@ -26,7 +26,7 @@
 ### Ścieżka Decyzyjna (Decision Flow):
 1. **Czy proces jest stały i opisany twardymi regułami?** ➔ **TRADYCYJNY KOD**
 2. **Przewidujesz wartości lub klasyfikujesz i masz dane historyczne?** ➔ **TRADYCYJNE AI (ML)**
-3. **Zadanie wymaga rozumowania, interpretacji treści lub szybkiego wdrożenia (GTM)?** ➔ **GENERATIVE AI (Workflow lub Agent)**
+3. **Zadanie wymaga rozumowania lub interpretacji treści?** ➔ **GENERATIVE AI (Workflow lub Agent)**
 
 ---
 

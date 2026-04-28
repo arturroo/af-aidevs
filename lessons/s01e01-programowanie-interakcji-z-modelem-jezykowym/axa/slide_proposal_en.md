@@ -26,7 +26,7 @@
 ### Decision Flow:
 1. **Is the process stable and described by hard rules?** ➔ **TRADITIONAL CODE**
 2. **Are you predicting values or classifying with historical data?** ➔ **TRADITIONAL AI (ML)**
-3. **Does the task require reasoning, interpretation, or fast go-to-market (GTM)?** ➔ **GENERATIVE AI (Workflow or Agent)**
+3. **Does the task require reasoning or content interpretation?** ➔ **GENERATIVE AI (Workflow or Agent)**
 
 ---
 

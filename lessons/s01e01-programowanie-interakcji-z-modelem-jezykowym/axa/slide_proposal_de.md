@@ -26,7 +26,7 @@
 ### Entscheidungsflow (Decision Flow):
 1. **Ist der Prozess stabil und durch harte Regeln beschreibbar?** ➔ **TRADITIONELLER CODE**
 2. **Prognostizieren Sie Werte oder klassifizieren Sie mit historischen Daten?** ➔ **TRADITIONELLE KI (ML)**
-3. **Erfordert die Aufgabe logisches Denken, Interpretation oder eine schnelle Markteinführung (GTM)?** ➔ **GENERATIVE KI (Workflow or Agent)**
+3. **Erfordert die Aufgabe logisches Denken oder Inhaltsinterpretation?** ➔ **GENERATIVE KI (Workflow oder Agent)**
 
 ---
 
