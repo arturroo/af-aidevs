@@ -37,6 +37,6 @@ Gdy już wybierzesz AI, dopasuj stopień autonomii:
 
 ---
 *Źródła:*
-- *Kurs: [AI_DEVS.pl v4](https://aidevs.pl)*
+- *Kurs: [AI_devs 4 Builders](https://aidevs.pl)*
 - *Anthropic: [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents)*
 - *Google Cloud: [GenAI or Traditional AI](https://cloud.google.com/docs/ai-ml/generative-ai/generative-ai-or-traditional-ai)*
