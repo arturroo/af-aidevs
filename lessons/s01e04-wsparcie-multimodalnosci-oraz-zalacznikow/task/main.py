@@ -1,166 +1,197 @@
 import os
-import argparse
-import asyncio
 import json
-import httpx
-from typing import List, Dict, Any, Optional
+import asyncio
+import base64
+import logging
+import importlib
+import sys
+from typing import List, Dict, Any, Optional, Annotated, Sequence, Union
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from pathlib import Path
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from google.cloud import bigquery
 
-# Backend specific imports
-from langchain_google_vertexai import ChatVertexAI
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-from langchain_core.tools import tool
-from google import genai
-from google.genai import types
+# LangChain / LangGraph imports
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
+from langchain.agents import create_agent
+from schemas import AgentResponse
 
 load_dotenv()
 
+# --- Configuration & Logging ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("SPK_Agent_v5")
+
+BASE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = BASE_DIR.parents[2]
+sys.path.extend([str(BASE_DIR), str(ROOT_DIR)])
+
+from utils.prompts import load_system_prompt
+
 # Constants from environment
-AIDEVS_API_KEY = os.getenv("AIDEVS_API_KEY")
 AIDEVS_VERIFY = os.getenv("AIDEVS_VERIFY")
-AIDEVS_DOC = os.getenv("AIDEVS_DOC") # To be filled in .env
+BQ_AUDIT_TABLE = os.getenv("BQ_AUDIT_TABLE") or "af-aidevs.s01e04.audit"
+GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
 
-# Model configuration
-MODEL_NAME = "gemini-1.5-flash-001" # Or gemini-2.0-flash-lite-preview-02-05 as per latest standards
+bq_client = bigquery.Client(project=GOOGLE_CLOUD_PROJECT, location="europe-west6")
+ZURICH_TZ = ZoneInfo("Europe/Zurich")
 
-class TaskData(BaseModel):
-    nadawca: str = "450202122"
-    punkt_nadawczy: str = "Gdańsk"
-    punkt_docelowy: str = "Żarnowiec"
-    waga: int = 2800
-    zawartosc: str = "kasety z paliwem do reaktora"
-    uwagi: str = "brak"
-    budget: int = 0
+# Debug Environment
+gc_location = os.getenv("GOOGLE_CLOUD_LOCATION") or "undefined"
+print(f"==== DEBUG ==== GOOGLE_CLOUD_LOCATION env var is: {gc_location}", flush=True)
+print(f"==== DEBUG ==== Current Working Directory (CWD) is: {os.getcwd()}", flush=True)
+print(f"==== DEBUG ==== Sandbox (DATA_DIR) path is: {BASE_DIR / 'data'}", flush=True)
 
-class DocumentProcessor:
-    def __init__(self):
-        self.cache = {}
+async def log_to_bq(session_id: str, actor: str, content: str, metadata: Optional[Dict] = None):
+    """Audits interaction to BigQuery asynchronously."""
+    
+    def _do_insert():
+        try:
+            row = {
+                "timestamp": datetime.now(ZURICH_TZ).isoformat(),
+                "session_id": session_id,
+                "actor": actor,
+                "content": content,
+                "metadata": json.dumps(metadata) if metadata else None
+            }
+            if BQ_AUDIT_TABLE and "." in BQ_AUDIT_TABLE:
+                errors = bq_client.insert_rows_json(BQ_AUDIT_TABLE, [row])
+                if errors:
+                    logger.error(f"BQ Audit Error: {errors}")
+            else:
+                logger.info(f"[Audit Log] {actor}: {content[:100]}...")
+        except Exception as e:
+            logger.error(f"Failed to log to BQ: {e}")
 
-    async def fetch_text_doc(self, filename: str) -> str:
-        """Fetches a text/markdown document from the hub."""
-        if filename in self.cache:
-            return self.cache[filename]
+    # Run the blocking BQ call in a separate thread to keep the event loop free
+    await asyncio.to_thread(_do_insert)
+
+# --- Tool Discovery ---
+
+def discover_tools():
+    """Dynamically loads tools from the tools/ directory (Progressive Disclosure)."""
+    tools_list = []
+    tools_path = Path(BASE_DIR) / "tools"
+    
+    if not tools_path.exists():
+        return tools_list
+
+    for file_path in tools_path.glob("*.py"):
+        if file_path.name == "__init__.py":
+            continue
+            
+        module_name = f"tools.{file_path.stem}"
+        try:
+            module = importlib.import_module(module_name)
+            tool_func = getattr(module, file_path.stem)
+            if callable(tool_func):
+                tools_list.append(tool_func)
+                logger.info(f"[Discovery] Loaded tool: {file_path.stem}")
+        except (ImportError, AttributeError) as e:
+            logger.error(f"Failed to load tool from {file_path.name}: {e}")
+            
+    return tools_list
+
+# Initialize Tools
+ALL_TOOLS = discover_tools()
+
+# Load System Prompt and Configuration
+config = load_system_prompt(BASE_DIR)
+
+# Initialize Model (Dynamic from frontmatter config)
+llm = ChatGoogleGenerativeAI(
+    model=config.model,
+    temperature=config.temperature,
+    project=GOOGLE_CLOUD_PROJECT,
+    location=config.model_region,
+    vertexai=True
+)
+
+# Create structured variant for final answers (Mandatory Reasoning)
+llm_structured = llm.with_structured_output(AgentResponse)
+
+# --- Multimodal Support & Auditing Wrapper ---
+
+# --- Multimodal Support & Auditing Wrapper ---
+
+# Create the Agent using the Factory Pattern from LangChain 1.2.15
+agent_executor = create_agent(
+    model=llm,
+    tools=ALL_TOOLS,
+    system_prompt=config.system_prompt
+)
+
+async def run_autonomous_loop():
+    session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    print(f"Starting Modern Agent Session: {session_id}")
+    
+    # Initial state
+    messages = [HumanMessage(content="Start investigation of local files and the Hub to fill the declaration.")]
+    
+    # We run the agent. LangGraph's create_agent (internally ReAct) handles the loop.
+    async for event in agent_executor.astream({"messages": messages}, stream_mode="values"):
+        last_msg = event["messages"][-1]
         
-        url = f"{AIDEVS_DOC}/{filename}"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            content = response.text
-            self.cache[filename] = content
-            return content
-
-    async def fetch_binary_doc(self, filename: str) -> bytes:
-        """Fetches an image/binary document from the hub."""
-        url = f"{AIDEVS_DOC}/{filename}"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            return response.content
-
-# --- LangChain Implementation ---
-
-class SPKAgent:
-    def __init__(self):
-        self.llm = ChatVertexAI(model_name=MODEL_NAME, temperature=0)
-        self.processor = DocumentProcessor()
-        self.knowledge_base = {}
-
-    async def read_document(self, filename: str) -> str:
-        """Read a markdown document from the documentation hub."""
-        content = await self.processor.fetch_text_doc(filename)
-        self.knowledge_base[filename] = content
-        return content
-
-    async def analyze_image_document(self, filename: str, query: str) -> str:
-        """Analyze an image document from the hub using vision."""
-        image_data = await self.processor.fetch_binary_doc(filename)
-        # Here we would use the LLM with the image data
-        # For now, this is a placeholder for the actual vision call
-        return f"Vision Analysis of {filename}: [Details about routes/rules extracted from image]"
-
-    def get_tools(self):
-        @tool
-        async def read_doc_tool(filename: str) -> str:
-            """Fetches and returns the content of a markdown file from SPK documentation."""
-            return await self.read_document(filename)
-
-        @tool
-        async def analyze_img_tool(filename: str, query: str) -> str:
-            """Uses vision to extract information from an image file in SPK documentation."""
-            return await self.analyze_image_document(filename, query)
-
-        return [read_doc_tool, analyze_img_tool]
-
-async def run_langchain_logic():
-    print("Initializing LangChain Agent Loop...")
-    agent_handler = SPKAgent()
-    tools = agent_handler.get_tools()
-    llm_with_tools = agent_handler.llm.bind_tools(tools)
-    
-    system_msg = SystemMessage(content="""
-    You are an expert logistics coordinator for the System Przesyłek Konduktorskich (SPK).
-    Your goal is to fill out a transport declaration for a critical shipment.
-    
-    SHIPMENT DATA:
-    - Nadawca: 450202122
-    - Punkt nadawczy: Gdańsk
-    - Punkt docelowy: Żarnowiec
-    - Waga: 2800 kg
-    - Zawartość: kasety z paliwem do reaktora
-    - Uwagi: brak
-    - Budget: 0 PP
-    
-    STEPS:
-    1. Start by reading 'index.md' to understand the documentation structure.
-    2. Recursively explore linked documents and images to find:
-       - The correct route code for Gdańsk -> Żarnowiec.
-       - The category (A-E) that allows for a 0 PP fee for this shipment.
-       - The exact template for the declaration (found in one of the appendices).
-    3. HINT: Critical information might be hidden in **HTML `<head>` tags**, document metadata, or "removed" files. Pay close attention to any HTML files you encounter.
-    4. Once you have all the information, generate the final declaration string.
-    
-    IMPORTANT: The declaration must match the template exactly, including all separators and formatting.
-    """)
-
-    messages = [system_msg, HumanMessage(content="Start the discovery process and generate the declaration.")]
-    
-    # Simple loop simulation
-    for i in range(10): # Limit iterations
-        response = await llm_with_tools.ainvoke(messages)
-        messages.append(response)
+        # Auditing every interaction
+        actor = "agent" if isinstance(last_msg, AIMessage) else "user" if isinstance(last_msg, HumanMessage) else "tool"
         
-        if not response.tool_calls:
-            print("\n--- Final Declaration Proposal ---\n")
-            print(response.content)
+        # content can be str or list (multimodal)
+        raw_content = last_msg.content
+        content_to_log = str(raw_content)
+        metadata = None
+        
+        # Special handling for structured tool outputs
+        if isinstance(last_msg, ToolMessage):
+            parsed = None
+            if isinstance(raw_content, dict):
+                parsed = raw_content
+            elif isinstance(raw_content, str):
+                try:
+                    parsed = json.loads(raw_content)
+                except json.JSONDecodeError:
+                    pass
+            
+            if isinstance(parsed, dict):
+                # Extract headers for metadata if present (from http_get or submit)
+                if "headers" in parsed:
+                    metadata = parsed["headers"]
+                    if "status" in parsed:
+                        metadata["status"] = parsed["status"]
+                
+                # Determine what to show in 'content' column in BQ
+                if "body" in parsed:
+                    content_to_log = str(parsed["body"])
+                elif "content" in parsed:
+                    content_to_log = str(parsed["content"])
+                elif "filename" in parsed and actor == "tool":
+                    content_to_log = f"File processed: {parsed['filename']}"
+                elif "files" in parsed:
+                    content_to_log = f"Files found: {', '.join(parsed['files'])}"
+                elif "error" in parsed and parsed["error"]:
+                    content_to_log = f"ERROR: {parsed['error']}"
+                else:
+                    content_to_log = json.dumps(parsed)
+        
+        await log_to_bq(session_id, actor, content_to_log, metadata=metadata)
+        
+        if isinstance(last_msg, AIMessage) and not last_msg.tool_calls:
+            # Enforce Structured Output for the final response to get reasoning
+            print("\n--- Generating Structured Final Response ---")
+            structured_msg = await llm_structured.ainvoke(event["messages"])
+            
+            # Log final structured response with reasoning
+            await log_to_bq(
+                session_id, 
+                "agent", 
+                structured_msg.answer, 
+                metadata={"reasoning": structured_msg.reasoning, "type": "structured_final_response"}
+            )
+            
+            print(f"\nREASONING:\n{structured_msg.reasoning}")
+            print(f"\nFINAL ANSWER:\n{structured_msg.answer}")
             break
-        
-        for tool_call in response.tool_calls:
-            # Execute tool logic here (mapping tool_call['name'] to actual functions)
-            # This part needs actual tool execution plumbing
-            print(f"Agent calls tool: {tool_call['name']} with {tool_call['args']}")
-            # Placeholder for tool output
-            tool_msg = ToolMessage(content="[Tool Output Placeholder]", tool_call_id=tool_call['id'])
-            messages.append(tool_msg)
-
-# --- Vertex AI GenAI SDK (ADK) Implementation ---
-
-async def run_adk_logic():
-    print("Running with Vertex AI SDK (ADK) backend...")
-    client = genai.Client(vertexai=True, location="us-central1")
-    # TODO: Implement equivalent logic using google-genai SDK
-    pass
-
-async def main():
-    parser = argparse.ArgumentParser(description="S01E04 Task Boilerplate")
-    parser.add_argument("--backend", choices=["langchain", "genai"], default="langchain", 
-                        help="Framework choice (default: langchain)")
-    args = parser.parse_args()
-
-    if args.backend == "langchain":
-        await run_langchain_logic()
-    else:
-        await run_adk_logic()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_autonomous_loop())

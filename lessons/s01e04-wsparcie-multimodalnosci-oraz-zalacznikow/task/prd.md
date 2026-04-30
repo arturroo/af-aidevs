@@ -45,19 +45,32 @@ The task requires navigating through a complex, multi-file documentation set (mo
 - **Modularity**: Separation of concerns between scraping, reasoning, and submission.
 
 ## Architecture & Workflow
-1. **Phase 1: Knowledge Discovery (Agent Loop)**
-   - Start with `index.md`.
-   - Tool-use: `fetch_document(path)`, `analyze_image(path)`.
-   - Agent builds an internal representation of the rules.
-2. **Phase 2: Declaration Crafting**
-   - Agent uses the gathered knowledge to fill the template.
-3. **Phase 3: Validation & Submission**
-   - Final check against the rules.
-   - Post to verification server.
+
+### 1. Phase 0: Documentation Scraper (`docs_scraper.py`)
+- **Objective**: Download all necessary assets and metadata.
+- **Workflow**: 
+  - Fetch `index.md` and recursively find all linked files.
+  - Save each file to `data/`.
+  - **Metadata Logging**: Save full HTTP response headers for each request as `filename.headers.json`.
+- **Secret Discovery**: Manual or semi-automated inspection of headers for the "HEAD/GŁOWA" secret.
+
+### 2. Phase 1 & 2: Declaration Agent (`main.py`)
+- **Objective**: Reason through local documentation and generate the transport declaration.
+- **Workflow**:
+  - Load documentation from local `data/` directory.
+  - Multimodal analysis of images (via Vision LLM).
+  - Backend support: LangChain (default) or Vertex AI SDK (ADK).
+  - **Output**: Save the final declaration string to a local file (e.g., `declaration.txt`).
+
+### 3. Phase 3: Verification Submitter (`submit.sh`)
+- **Objective**: Send the final result to the verification server.
+- **Workflow**:
+  - Read `declaration.txt`.
+  - POST to `$AIDEVS_VERIFY` with task `sendit` using `curl`.
 
 ## Cloud Resources
 - None required (no Terraform). The task is purely logical/API-driven.
 
 ## TODO / Artur's Input
-- [ ] **[ARTUR TO FILL]**: Specific edge cases or hidden rules discovered during manual exploration.
+- [ ] **[ARTUR TO FILL]**: Finalize the list of discovered secret headers or parameters.
 - [ ] **[ARTUR TO FILL]**: Refinement of the system message for the agent loop.
