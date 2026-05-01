@@ -4,9 +4,11 @@ from typing import Optional, Dict
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 AIDEVS_DANE_DOC = os.getenv("AIDEVS_DANE_DOC")
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 from schemas import HttpGetInput, HttpGetOutput
 

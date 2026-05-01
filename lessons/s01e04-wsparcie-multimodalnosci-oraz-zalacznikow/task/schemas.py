@@ -53,9 +53,9 @@ class HttpGetOutput(BaseResponse):
 
 class SubmitDeclarationInput(BaseModel):
     reasoning: str = Field(..., description="Justification for submitting the declaration now. Did you verify all required fields?")
-    declaration: Dict[str, Any] = Field(
+    declaration: Any = Field(
         ..., 
-        description="The final transport declaration object structured according to the lesson template (Appendix E)."
+        description="The final transport declaration. Provide a JSON object structured according to the lesson template. (If using JSON, ensure keys match EXACTLY)."
     )
 
 class SubmitDeclarationOutput(BaseResponse):
@@ -70,6 +70,14 @@ class GetDateInput(BaseModel):
 
 class GetDateOutput(BaseResponse):
     current_date: str = Field(..., description="The current date and time in Europe/Zurich.")
+
+# --- discover_tools ---
+
+class DiscoverToolsInput(BaseModel):
+    reasoning: str = Field(..., description="Why are you performing tool discovery now?")
+
+class DiscoverToolsOutput(BaseResponse):
+    available_tools: List[Dict[str, str]] = Field(..., description="List of tools with their names and descriptions.")
 
 # --- Agent Interaction ---
 

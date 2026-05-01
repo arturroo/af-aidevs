@@ -70,13 +70,14 @@ async def log_to_bq(session_id: str, actor: str, content: str, metadata: Optiona
 
 # --- Tool Discovery ---
 
-def discover_tools():
-    """Dynamically loads tools from the tools/ directory (Progressive Disclosure)."""
+# --- Tool Discovery ---
+
+def load_all_tools():
+    """Dynamically loads all tools from the tools/ directory for the Agent Graph."""
     tools_list = []
     tools_path = Path(BASE_DIR) / "tools"
-    
-    if not tools_path.exists():
-        return tools_list
+
+    print(f"==== DEBUG ==== tools_path: {tools_path}", flush=True)
 
     for file_path in tools_path.glob("*.py"):
         if file_path.name == "__init__.py":
@@ -86,16 +87,22 @@ def discover_tools():
         try:
             module = importlib.import_module(module_name)
             tool_func = getattr(module, file_path.stem)
-            if callable(tool_func):
+            # LangChain @tool decorator creates objects that may not pass callable()
+            # We check if they have the standard tool attributes instead
+            if hasattr(tool_func, "name") and hasattr(tool_func, "invoke"):
                 tools_list.append(tool_func)
-                logger.info(f"[Discovery] Loaded tool: {file_path.stem}")
+                print(f"==== DEBUG ==== [Discovery] Registered tool: {file_path.stem}", flush=True)
+                logger.info(f"[Discovery] Registered tool: {file_path.stem}")
+            else:
+                print(f"==== DEBUG ==== [Discovery] Tool {file_path.stem} is not a valid LangChain Tool", flush=True)
+                logger.error(f"[Discovery] Tool {file_path.stem} is not a valid LangChain Tool")
         except (ImportError, AttributeError) as e:
-            logger.error(f"Failed to load tool from {file_path.name}: {e}")
+            logger.error(f"Failed to load tool {file_path.name}: {e}")
             
     return tools_list
 
-# Initialize Tools
-ALL_TOOLS = discover_tools()
+# Register ALL tools in the graph, but tell the agent to DISCOVER them
+ALL_TOOLS = load_all_tools()
 
 # Load System Prompt and Configuration
 config = load_system_prompt(BASE_DIR)
@@ -109,18 +116,14 @@ llm = ChatGoogleGenerativeAI(
     vertexai=True
 )
 
-# Create structured variant for final answers (Mandatory Reasoning)
+# Create structured variant for final answers
 llm_structured = llm.with_structured_output(AgentResponse)
 
-# --- Multimodal Support & Auditing Wrapper ---
-
-# --- Multimodal Support & Auditing Wrapper ---
-
-# Create the Agent using the Factory Pattern from LangChain 1.2.15
+# Create the Agent using the Factory Pattern
 agent_executor = create_agent(
     model=llm,
     tools=ALL_TOOLS,
-    system_prompt=config.system_prompt
+    system_prompt=config.system_prompt + "\n\nIMPORTANT: At the start of the session, you MUST use the 'discover_tools' capability to learn about your specialized skills. Do not assume tool names."
 )
 
 async def run_autonomous_loop():
