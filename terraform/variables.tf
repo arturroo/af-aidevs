@@ -50,6 +50,9 @@ variable "datasets" {
         "s01e03" = {
             description = "Dataset for S01E03 tasks"
         }
+        "s01e04" = {
+            description = "Dataset for S01E04 autonomous agent tasks"
+        }
     }
 }
 
@@ -75,6 +78,12 @@ variable "internal_tables" {
             description = "Audit logs for S01E03 proxy agent and MCP server"
             dataset_id = "s01e03"
             schema = "bq-schemas/s01e03.audit.json"
+        }
+        "s01e04_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S01E04 autonomous agent"
+            dataset_id  = "s01e04"
+            schema      = "bq-schemas/s01e04.audit.json"
         }
     }
 }
