@@ -171,7 +171,10 @@ resource "google_bigquery_table" "view" {
         query = templatefile(each.value["query_file"], {project_id = var.project_id})
         use_legacy_sql = try(each.value["use_legacy_sql"], false)
     }
-    depends_on = [google_bigquery_dataset.dataset]
+    depends_on = [
+        google_bigquery_dataset.dataset,
+        google_bigquery_table.internal_table
+    ]
 }
 
 resource "google_bigquery_table" "dependent_view" {

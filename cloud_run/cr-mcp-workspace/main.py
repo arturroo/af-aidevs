@@ -120,4 +120,5 @@ def write_file(file_path: str = Field(description="Relative path to the file to 
 if __name__ == "__main__":
     # For Cloud Run, FastMCP exposes an ASGI app we can run with uvicorn or just use run()
     # When deployed to Cloud Run, it's recommended to use the SSE transport for HTTP
-    mcp.run(transport="sse", port=int(os.getenv("PORT", "8080")))
+    # We must bind to 0.0.0.0 so Cloud Run can reach the container
+    mcp.run(transport="sse", host="0.0.0.0", port=int(os.getenv("PORT", "8080")))

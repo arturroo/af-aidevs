@@ -101,6 +101,12 @@ variable "internal_tables" {
             dataset_id  = "s01e05"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
+        "audit_stdout" = {
+            table_id    = "stdout"
+            description = "Raw logs from Cloud Run (Placeholder for Log Sink)"
+            dataset_id  = "ai_governance"
+            schema      = "bq-schemas/logging.stdout.json"
+        }
     }
 }
 
@@ -231,7 +237,7 @@ variable "cr_names" {
             source_dir   = "../lessons/s01e03-projektowanie-api-dla-efektywnej-pracy-z-modelem/task/cr-s01e03-mcp-server"
             cpu           = "1"
             memory       = "512Mi"
-            public       = true # it should be private and in agent should use google.auth.transport.requests library to generate OIDC token for Cloud Run authentication
+            public       = false # it should be private and in agent should use google.auth.transport.requests library to generate OIDC token for Cloud Run authentication
             cpu_throttling = true
             max_instances = 1
             concurrency   = 10
@@ -240,7 +246,7 @@ variable "cr_names" {
                 LOG_LEVEL = "DEBUG"
                 BQ_AUDIT_TABLE = "af-aidevs.s01e03.audit"
             }
-            roles         = ["roles/bigquery.jobUser"]
+            roles         = ["roles/bigquery.jobUser", "roles/secretmanager.secretAccessor"]
             dataset_roles = {
                 "s01e03" = ["roles/bigquery.dataEditor"]
             }
@@ -253,7 +259,7 @@ variable "cr_names" {
             source_dir    = "../lessons/s01e03-projektowanie-api-dla-efektywnej-pracy-z-modelem/task/cr-s01e03-proxy-agent"
             cpu           = "1"
             memory        = "512Mi"
-            public        = true
+            public        = false
             cpu_throttling = true
             max_instances = 1
             env           = {
@@ -263,7 +269,7 @@ variable "cr_names" {
                 LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
                 MCP_SERVER_URL = "https://cr-s01e03-mcp-server-qsvqxjqyrq-oa.a.run.app"
             }
-            roles         = ["roles/bigquery.jobUser"]
+            roles         = ["roles/bigquery.jobUser", "roles/secretmanager.secretAccessor"]
             dataset_roles = {
                 "s01e03" = ["roles/bigquery.dataEditor"]
             }
@@ -298,6 +304,7 @@ variable "cr_names" {
             env           = {
                 LOG_LEVEL = "DEBUG"
             }
+            roles         = ["roles/aiplatform.user"]
         }
         "cr-s01e05-agent" = {
             source_dir    = "../lessons/s01e05-zarzadzanie-jawnymi-oraz-niejawnymi-limitami-modeli/task"
@@ -313,7 +320,7 @@ variable "cr_names" {
                 LANGSMITH_TRACING = "true"
                 LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
             }
-            roles         = ["roles/bigquery.jobUser"]
+            roles         = ["roles/bigquery.jobUser", "roles/secretmanager.secretAccessor"]
             dataset_roles = {
                 "s01e05" = ["roles/bigquery.dataEditor"]
             }

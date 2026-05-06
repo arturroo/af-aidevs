@@ -15,6 +15,7 @@ resource "google_artifact_registry_repository" "repo" {
     condition {
       tag_state    = "ANY"
       older_than   = "2592000s" # 30 days
+    }
   }
 }
 
