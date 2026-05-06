@@ -21,11 +21,15 @@ variable "buckets" {
         #     versioning    = true
         #     force_destroy = false
         # }
+        "af-aidevs" = {
+            exact_name = "af-aidevs"
+            location = "europe-west6"
+        }
         "gcf" = {}
-        # "af-aidevs" = {
-        #     exact_name = "af-aidevs"
-        # }
-
+        "af-aidevs-workspaces" = {
+            exact_name = "af-aidevs-workspaces"
+            location = "europe-west6"
+        }
     }
 }
 
@@ -52,6 +56,12 @@ variable "datasets" {
         }
         "s01e04" = {
             description = "Dataset for S01E04 autonomous agent tasks"
+        }
+        "s01e05" = {
+            description = "Dataset for S01E05 autonomous agent tasks"
+        }
+        "ai_governance" = {
+            description = "Dataset for global AI governance and auditing"
         }
     }
 }
@@ -84,6 +94,12 @@ variable "internal_tables" {
             description = "Audit logs for S01E04 autonomous agent"
             dataset_id  = "s01e04"
             schema      = "bq-schemas/s01e04.audit.json"
+        }
+        "s01e05_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S01E05 autonomous agent"
+            dataset_id  = "s01e05"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
     }
 }
@@ -123,22 +139,22 @@ variable "external_tables" {
 variable "views" {
     description = "BigQuery views"
     default = {
-        # "revolut_v" = {
-        #     description = "Revolut transactions unique description indicator first_started"
-        #     dataset_id = "banks"
-        #     query_file = "bq-views/banks.revolut_v.sql"
-        # }
+        "audit_v1" = {
+            description = "Parsing logic for raw audit logs (Silver Layer)"
+            dataset_id  = "ai_governance"
+            query_file  = "bq-views/ai_governance.audit_v1.sql"
+        }
     }
 }
 
 variable "dependent_views" {
     description = "BigQuery views that depend on other views"
     default = {
-        # "postfinance_v" = {
-        #     description = "PostFinance transactions with virtual TID and regex text splitting"
-        #     dataset_id = "banks"
-        #     query_file = "bq-views/banks.postfinance_v.sql"
-        # }
+        "audit_v" = {
+            description = "Stable pointer to the current production audit view (Gold Layer)"
+            dataset_id  = "ai_governance"
+            query_file  = "bq-views/ai_governance.audit_v.sql"
+        }
     }
 }
 
@@ -224,6 +240,10 @@ variable "cr_names" {
                 LOG_LEVEL = "DEBUG"
                 BQ_AUDIT_TABLE = "af-aidevs.s01e03.audit"
             }
+            roles         = ["roles/bigquery.jobUser"]
+            dataset_roles = {
+                "s01e03" = ["roles/bigquery.dataEditor"]
+            }
             secrets      = {
                 AIDEVS_API_KEY = "AIDEVS_API_KEY"
                 AIDEVS_API_PACKAGES = "AIDEVS_API_PACKAGES"
@@ -242,6 +262,64 @@ variable "cr_names" {
                 LANGSMITH_TRACING = "true"
                 LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
                 MCP_SERVER_URL = "https://cr-s01e03-mcp-server-qsvqxjqyrq-oa.a.run.app"
+            }
+            roles         = ["roles/bigquery.jobUser"]
+            dataset_roles = {
+                "s01e03" = ["roles/bigquery.dataEditor"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT = "LANGSMITH_PROJECT"
+            }
+        }
+        "cr-mcp-workspace" = {
+            source_dir    = "../cloud_run/cr-mcp-workspace"
+            cpu           = "1"
+            memory        = "512Mi"
+            public        = false
+            cpu_throttling = true
+            max_instances = 1
+            concurrency   = 80
+            env           = {
+                LOG_LEVEL = "DEBUG"
+            }
+            bucket_roles = {
+                "af-aidevs-workspaces" = ["roles/storage.objectAdmin"]
+            }
+        }
+        "cr-model-armor" = {
+            source_dir    = "../cloud_run/cr-model-armor"
+            cpu           = "1"
+            memory        = "512Mi"
+            public        = false
+            cpu_throttling = true
+            max_instances = 1
+            concurrency   = 80
+            env           = {
+                LOG_LEVEL = "DEBUG"
+            }
+        }
+        "cr-s01e05-agent" = {
+            source_dir    = "../lessons/s01e05-zarzadzanie-jawnymi-oraz-niejawnymi-limitami-modeli/task"
+            cpu           = "1"
+            memory        = "512Mi"
+            public        = false
+            cpu_throttling = true
+            max_instances = 1
+            concurrency   = 80
+            env           = {
+                BACKEND = "langchain"
+                BQ_AUDIT_TABLE = "af-aidevs.s01e05.audit"
+                LANGSMITH_TRACING = "true"
+                LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser"]
+            dataset_roles = {
+                "s01e05" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-mcp-workspace" = ["roles/run.invoker"]
+                "cr-model-armor"   = ["roles/run.invoker"]
             }
             secrets       = {
                 LANGSMITH_API_KEY = "LANGSMITH_API_KEY"

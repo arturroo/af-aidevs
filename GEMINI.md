@@ -33,6 +33,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - **Provider:** We are using Google Provider `~> 7.0`.
 - **State:** Remote backend state (GCS) will be configured in `backend.tf`. Service accounts (`*.json`) must NEVER be committed.
 - **Naming:** All resources must be named in kebab-case, with a prefix indicating the resource type (e.g., `bq-` for BigQuery, `fs-` for Firestore, `cf-` for Cloud Functions) and following the lesson's s[season]e[episode] naming convention and short description of the resource. Example: `cf-s01e03-mcp-server`.
+- **Service Accounts:** We use a strict prefix-based naming convention for Service Accounts to lower cognitive load and improve traceability in logs: `sa-{resource_type_short}-{name}`. Example: `sa-cr-mcp-workspace` for a Cloud Run service. This allows for immediate identification of the resource type an identity belongs to. Max length is 30 characters.
 - **Secrets:** All secrets must be stored in Secret Manager or in a local file `.env` in particular task folder. Never commit `.env` files. Artur will fillsecrets or .env files, you just say with what values to fill them.
 - **Local Auth:** When running locally on WSL/Windows, always remember to `unset GOOGLE_APPLICATION_CREDENTIALS` (bash) or `$env:GOOGLE_APPLICATION_CREDENTIALS=$null` (powershell) to avoid conflicts with infrastructure service accounts.
 
@@ -59,7 +60,10 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
     - **Design Pattern: AgentResponse:** All final agent communications should follow the `AgentResponse` schema (including `reasoning` and `answer` fields) to ensure a consistent and auditable interface.
     - **Design Pattern: system_prompt.md:** Always store system instructions in a `system_prompt.md` file with YAML frontmatter containing at least `model` and `temperature`. This separates instructions from logic and allows for better prompt management.
     - **Design Pattern: get_current_date():** To ensure optimal LLM prompt caching (Context Caching), do NOT hardcode the date in the system prompt. Instead, always provide a `get_current_date()` tool that the agent can call when temporal context is needed.
-    - **Observability & Auditing:** Every interaction (thoughts, tool calls, results, and final answers) MUST be logged to an `audit` table in BigQuery for traceability and performance analysis.
+    - **Observability & Auditing:** 
+      - Every interaction (thoughts, tool calls, results, and final answers) MUST be logged to an `audit` table in BigQuery for traceability and performance analysis.
+      - **Traceability:** All service calls MUST include an `X-Session-ID` HTTP header. This header must be propagated across all internal service calls (e.g., from Agent to MCP or Model Armor) to ensure a complete trace can be reconstructed in BigQuery using the `session_id` field.
+      - **Lean Logging (The "Google Way"):** Stable platform services SHOULD NOT import the `google-cloud-logging` SDK. Instead, use standard `print(json.dumps(entry), flush=True)` to emit structured logs to `stdout`. This keeps containers lean, reduces cold start times, and eliminates network latency in the critical path. The infrastructure (Log Sinks + BigQuery Views) handles the asynchronous delivery and schema mapping (ELT pattern).
   - **Strict Interface Enforcement:** We follow the "Explicit over Implicit" rule. Tool function signatures MUST explicitly declare parameters that match the `args_schema` fields. Avoid using generic `**kwargs` for tool inputs to ensure type safety, IDE support (linting), and to prevent unhandled runtime errors from model hallucinations.
   - **Interface-Implementation Sync:** The parameters in the Python function serve as a runtime contract. If the AI-facing schema changes, the Python function signature must be updated accordingly to maintain system integrity.
 

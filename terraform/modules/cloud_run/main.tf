@@ -15,8 +15,15 @@ resource "google_artifact_registry_repository" "repo" {
     condition {
       tag_state    = "ANY"
       older_than   = "2592000s" # 30 days
-    }
   }
+}
+
+# Create a dedicated Service Account for each Cloud Run service
+resource "google_service_account" "sa_cr" {
+  for_each     = var.cr_names
+  account_id   = "sa-cr-${replace(each.key, "cr-", "")}"
+  display_name = "Service Account for ${each.key}"
+  project      = var.project_id
 }
 
 data "archive_file" "cr_source" {
@@ -61,6 +68,7 @@ resource "google_cloud_run_v2_service" "cr" {
   project  = var.project_id
 
   template {
+    service_account = google_service_account.sa_cr[each.key].email
     annotations = {
       "run.googleapis.com/cpu-throttling" = tostring(try(each.value.cpu_throttling, true))
     }

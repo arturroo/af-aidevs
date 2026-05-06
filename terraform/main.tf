@@ -192,4 +192,120 @@ resource "google_bigquery_table" "dependent_view" {
     ]
 }
 
+locals {
+  # Project-level roles (e.g. roles/bigquery.jobUser)
+  project_iam_list = flatten([
+    for svc_name, cfg in var.cr_names : [
+      for role in try(cfg.roles, []) : {
+        svc  = svc_name
+        role = role
+      }
+    ]
+  ])
+
+  # Dataset-level roles (BigQuery)
+  dataset_iam_list = flatten([
+    for svc_name, cfg in var.cr_names : [
+      for dataset, roles in try(cfg.dataset_roles, {}) : [
+        for role in roles : {
+          svc     = svc_name
+          dataset = dataset
+          role    = role
+        }
+      ]
+    ]
+  ])
+
+  # Bucket-level roles (Cloud Storage)
+  bucket_iam_list = flatten([
+    for svc_name, cfg in var.cr_names : [
+      for bucket, roles in try(cfg.bucket_roles, {}) : [
+        for role in roles : {
+          svc    = svc_name
+          bucket = bucket
+          role   = role
+        }
+      ]
+    ]
+  ])
+
+  # Service-to-Service roles (Cloud Run Invoker)
+  cr_iam_list = flatten([
+    for svc_name, cfg in var.cr_names : [
+      for target_svc, roles in try(cfg.cr_roles, {}) : [
+        for role in roles : {
+          svc        = svc_name
+          target_svc = target_svc
+          role       = role
+        }
+      ]
+    ]
+  ])
+}
+
+# 1. Project-level IAM Roles
+resource "google_project_iam_member" "project_roles" {
+  for_each = { for entry in local.project_iam_list : "${entry.svc}-${entry.role}" => entry }
+
+  project = var.project_id
+  role    = each.value.role
+  member  = "serviceAccount:${module.cloud_run.service_accounts[each.value.svc]}"
+  depends_on = [module.cloud_run]
+}
+
+# 2. BigQuery Dataset IAM Roles
+resource "google_bigquery_dataset_iam_member" "dataset_roles" {
+  for_each = { for entry in local.dataset_iam_list : "${entry.svc}-${entry.dataset}-${entry.role}" => entry }
+
+  project    = var.project_id
+  dataset_id = each.value.dataset
+  role       = each.value.role
+  member     = "serviceAccount:${module.cloud_run.service_accounts[each.value.svc]}"
+  depends_on = [module.cloud_run, google_bigquery_dataset.dataset]
+}
+
+# 3. Storage Bucket IAM Roles
+resource "google_storage_bucket_iam_member" "bucket_roles" {
+  for_each = { for entry in local.bucket_iam_list : "${entry.svc}-${entry.bucket}-${entry.role}" => entry }
+
+  bucket = module.gstorage.bucket_names[each.value.bucket]
+  role   = each.value.role
+  member = "serviceAccount:${module.cloud_run.service_accounts[each.value.svc]}"
+  depends_on = [module.cloud_run, module.gstorage]
+}
+
+# 4. Cloud Run Service-to-Service IAM Roles
+resource "google_cloud_run_v2_service_iam_member" "cr_invokers" {
+  for_each = { for entry in local.cr_iam_list : "${entry.svc}-${entry.target_svc}-${entry.role}" => entry }
+
+  project  = var.project_id
+  location = "europe-west6"
+  name     = each.value.target_svc
+  role     = each.value.role
+  member   = "serviceAccount:${module.cloud_run.service_accounts[each.value.svc]}"
+  depends_on = [module.cloud_run]
+}
+
+# 5. Global Audit Log Sink (The "Google Way")
+resource "google_logging_project_sink" "audit_sink" {
+  name        = "sk-ai-governance-audit"
+  destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/ai_governance"
+  filter      = "jsonPayload.log_type=\"AUDIT\""
+
+  unique_writer_identity = true
+
+  bigquery_options {
+    use_partitioned_tables = true
+  }
+}
+
+# 6. IAM for the Log Sink to write to BigQuery
+resource "google_bigquery_dataset_iam_member" "sink_bq_editor" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.dataset["ai_governance"].dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = google_logging_project_sink.audit_sink.writer_identity
+  
+  depends_on = [google_bigquery_dataset.dataset]
+}
 
