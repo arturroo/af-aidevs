@@ -2,7 +2,7 @@
 name = "s01e05-agent"
 version = "0.1.0"
 description = "S01E05 Task: railway - Handling API limits and 503 errors"
-requires-python = "==3.12.*"
+requires-python = "==3.12.11"
 dependencies = [
     "fastapi==0.136.1",
     "google-cloud-bigquery==3.41.0",

@@ -203,11 +203,12 @@ resource "google_bigquery_table" "dependent_view" {
 # Cloud Run IAM roles are now managed internally within the cloud_run module
 # to ensure correct resource ordering (depends_on) and avoid race conditions.
 
-# 5. Global Audit Log Sink (The "Google Way")
+# 5. Global Audit Log Sinks (The "Google Way")
 resource "google_logging_project_sink" "audit_sink" {
-  name        = "sk-ai-governance-audit"
-  destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/ai_governance"
-  filter      = "jsonPayload.log_type=\"AUDIT\""
+  for_each    = var.log_sinks
+  name        = each.key
+  destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${each.value.dataset_id}"
+  filter      = each.value.filter
 
   unique_writer_identity = true
 
@@ -216,12 +217,13 @@ resource "google_logging_project_sink" "audit_sink" {
   }
 }
 
-# 6. IAM for the Log Sink to write to BigQuery
+# 6. IAM for the Log Sinks to write to BigQuery
 resource "google_bigquery_dataset_iam_member" "sink_bq_editor" {
+  for_each   = var.log_sinks
   project    = var.project_id
-  dataset_id = google_bigquery_dataset.dataset["ai_governance"].dataset_id
+  dataset_id = google_bigquery_dataset.dataset[each.value.dataset_id].dataset_id
   role       = "roles/bigquery.dataEditor"
-  member     = google_logging_project_sink.audit_sink.writer_identity
+  member     = google_logging_project_sink.audit_sink[each.key].writer_identity
   
   depends_on = [google_bigquery_dataset.dataset]
 }

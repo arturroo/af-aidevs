@@ -17,7 +17,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - GCP standards: BigQuery (`bq`), Firestore (`fs`), Cloud Functions entry point is always `main()`.
 - LLM Default: We use **Gemini 3.1 Flash Lite Preview** (`gemini-3.1-flash-lite-preview`) on **Vertex AI** via the modern `google-genai` SDK. Default location is `GOOGLE_CLOUD_LOCATION=global`.
 - Python package management: `uv` only. `pyproject.toml` only and must use precise library versions (no `^` operators) and dependencies should be sorted **alphabetically**.
-- **Python Version:** Always use `requires-python = "==3.12.*"` in `pyproject.toml` to ensure consistent environment across all tasks.
+- **Python Version:** Always use `requires-python = "==3.12.11"` in `pyproject.toml` and in .python-version files to ensure consistent environment across all tasks.
 - **Paths:** Always use `pathlib.Path` for file and directory operations. Avoid legacy `os.path` functions to ensure cross-platform compatibility and better readability.
 
 ### Security & Privacy

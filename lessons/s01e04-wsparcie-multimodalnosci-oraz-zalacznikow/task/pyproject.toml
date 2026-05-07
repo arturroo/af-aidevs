@@ -2,7 +2,7 @@
 name = "s01e04-task"
 version = "0.1.0"
 description = "S01E04 Task: sendit - Multimodal Documentation Analysis"
-requires-python = "==3.12.*"
+requires-python = "==3.12.11"
 dependencies = [
     "langchain==1.2.15",
     "langchain-google-genai==4.2.2",

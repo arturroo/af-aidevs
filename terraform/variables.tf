@@ -336,3 +336,13 @@ variable "cr_names" {
     }
 }
 
+variable "log_sinks" {
+    description = "Global Log Sinks for routing logs to BigQuery"
+    default = {
+        "sk-ai-governance-audit" = {
+            filter      = "jsonPayload.log_type=\"AUDIT\""
+            dataset_id  = "ai_governance"
+        }
+    }
+}
+
