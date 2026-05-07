@@ -16,7 +16,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - **BigQuery:** Always create tables for a particular lesson in a BigQuery dataset named after that lesson (e.g., dataset `s01e03`).
 - GCP standards: BigQuery (`bq`), Firestore (`fs`), Cloud Functions entry point is always `main()`.
 - LLM Default: We use **Gemini 3.1 Flash Lite Preview** (`gemini-3.1-flash-lite-preview`) on **Vertex AI** via the modern `google-genai` SDK. Default location is `GOOGLE_CLOUD_LOCATION=global`.
-- Python package management: `uv` only. `pyproject.toml` or `requirements.txt` must use precise library versions (no `^` operators).
+- Python package management: `uv` only. `pyproject.toml` only and must use precise library versions (no `^` operators) and dependencies should be sorted **alphabetically**.
 - **Python Version:** Always use `requires-python = "==3.12.*"` in `pyproject.toml` to ensure consistent environment across all tasks.
 - **Paths:** Always use `pathlib.Path` for file and directory operations. Avoid legacy `os.path` functions to ensure cross-platform compatibility and better readability.
 
@@ -66,6 +66,29 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
       - **Lean Logging (The "Google Way"):** Stable platform services SHOULD NOT import the `google-cloud-logging` SDK. Instead, use standard `print(json.dumps(entry), flush=True)` to emit structured logs to `stdout`. This keeps containers lean, reduces cold start times, and eliminates network latency in the critical path. The infrastructure (Log Sinks + BigQuery Views) handles the asynchronous delivery and schema mapping (ELT pattern).
   - **Strict Interface Enforcement:** We follow the "Explicit over Implicit" rule. Tool function signatures MUST explicitly declare parameters that match the `args_schema` fields. Avoid using generic `**kwargs` for tool inputs to ensure type safety, IDE support (linting), and to prevent unhandled runtime errors from model hallucinations.
   - **Interface-Implementation Sync:** The parameters in the Python function serve as a runtime contract. If the AI-facing schema changes, the Python function signature must be updated accordingly to maintain system integrity.
+
+### Cloud Run Gold Standards
+To ensure consistent deployment and runtime behavior across all microservices:
+- **Entrypoint:** Every Python Cloud Run service MUST include a `Procfile` in its root directory with the following content:
+  `web: uvicorn main:app --host 0.0.0.0 --port $PORT`
+- **Dependencies:** For web services (FastAPI/Uvicorn/FastMcp), always use these precise versions in `pyproject.toml` to ensure stability, if not specified otherwise:
+  - `fastapi==0.136.1`
+  - `fastmcp==3.2.4`
+  - `google-cloud-bigquery==3.41.0`
+  - `google-genai==1.74.0`
+  - `httpx==0.28.1`
+  - `langchain==1.2.15`
+  - `langchain-google-genai==4.2.2`
+  - `langfuse==2.57.0`
+  - `pydantic==2.13.4`
+  - `python-dotenv==1.2.2`
+  - `python-frontmatter==1.1.0`
+  - `tenacity==9.0.0`
+  - `tzdata==2026.2`
+  - `uvicorn==0.46.0`
+- **MCP Servers:** When using `FastMCP`, always expose the Starlette app as `app = mcp.http_app()` in `main.py` to allow the `uvicorn main:app` entrypoint to work correctly.
+  - **Naming:** Use kebab-case for the MCP server name (e.g., `FastMCP("Workspace-Manager")`). Do NOT use underscores.
+  - **Descriptions:** FastMCP 3.x+ does not support a `description` argument in the constructor. Instead, **always use docstrings** for tools and resources. The LLM uses these docstrings to understand how to use the server.
 
 ### TODO
 - [ ] Migrate `system_message.md` and tool hints/instructions to **Vertex AI Prompt Management** to allow dynamic updates without Cloud Run redeployment.

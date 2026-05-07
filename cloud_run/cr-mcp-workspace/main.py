@@ -36,7 +36,7 @@ def log_audit(actor: str, content: str, metadata: dict):
     print(json.dumps(audit_entry), flush=True)
 
 # Create the MCP Server
-mcp = FastMCP("Workspace_Manager", description="Global file management MCP server with OIDC isolation")
+mcp = FastMCP("Workspace-Manager")
 
 # Middleware to extract session_id from headers (compatible with SSE/HTTP)
 async def session_id_middleware(request: Request, call_next):
@@ -47,8 +47,9 @@ async def session_id_middleware(request: Request, call_next):
     finally:
         session_id_ctx.reset(token)
 
-# Attach middleware to the internal Starlette app
-mcp._app.add_middleware(BaseHTTPMiddleware, dispatch=session_id_middleware)
+app = mcp.http_app()
+# Attach middleware to the Starlette app
+app.add_middleware(BaseHTTPMiddleware, dispatch=session_id_middleware)
 
 def get_caller_identity() -> str:
     """Returns the cleaned service account name for workspace isolation."""
@@ -114,11 +115,10 @@ def write_file(file_path: str = Field(description="Relative path to the file to 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(content, encoding="utf-8")
     
-    log_to_bq("workspace", f"Write file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content)})
+    log_audit("workspace", f"Write file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content)})
     return f"File successfully written to {file_path}"
 
 if __name__ == "__main__":
-    # For Cloud Run, FastMCP exposes an ASGI app we can run with uvicorn or just use run()
-    # When deployed to Cloud Run, it's recommended to use the SSE transport for HTTP
-    # We must bind to 0.0.0.0 so Cloud Run can reach the container
-    mcp.run(transport="sse", host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
+    import uvicorn
+    # For local testing; Cloud Run will use uvicorn via Procfile
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
