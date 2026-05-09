@@ -90,5 +90,83 @@ To ensure consistent deployment and runtime behavior across all microservices:
   - **Naming:** Use kebab-case for the MCP server name (e.g., `FastMCP("Workspace-Manager")`). Do NOT use underscores.
   - **Descriptions:** FastMCP 3.x+ does not support a `description` argument in the constructor. Instead, **always use docstrings** for tools and resources. The LLM uses these docstrings to understand how to use the server.
 
+### MCP Server Testing Pattern (Remote on Cloud Run)
+To test a private MCP server deployed on Cloud Run (which requires IAM authentication), follow this pattern:
+
+1. **Prerequisites (Impersonation):**
+   Your user account must have permission to impersonate the target Service Account.
+   *Note: `$env:INVOKER_SA_NAME` refers to the part before the `@` of the Service Account that wants to CONNECT to the server (the client/agent identity), NOT the service account under which the MCP server itself is running.*
+   
+   Grant the role `roles/iam.serviceAccountTokenCreator` to your user on that client SA:
+   ```powershell
+   gcloud iam service-accounts add-iam-policy-binding $env:INVOKER_SA_NAME@$env:PROJECT_ID.iam.gserviceaccount.com --member="user:[YOUR_EMAIL]" --role="roles/iam.serviceAccountTokenCreator" --project="$env:PROJECT_ID"
+   ```
+   *Note: Permission propagation takes about 2 minutes.*
+
+2. **Step 1: Get OIDC Token:**
+   Generate a token for the Service Account with the target Cloud Run service URL as the audience:
+   ```powershell
+   $token = gcloud auth print-identity-token --impersonate-service-account="$env:INVOKER_SA_NAME@$env:PROJECT_ID.iam.gserviceaccount.com" --audiences="$env:CLOUD_RUN_URL"
+   ```
+
+3. **Step 2: Get Session ID:**
+   MCP over HTTP requires a session. Instead of manually copying the session ID from headers, you can automate it in PowerShell by capturing the `mcp-session-id` header from the response (even if the request returns 400 or 406):
+   ```powershell
+   try {
+       Invoke-WebRequest -Uri "$env:CLOUD_RUN_URL/mcp" -Headers @{
+           "Authorization" = "Bearer $token"
+           "Accept" = "text/event-stream"
+       } -ErrorAction Stop
+   } catch {
+       if ($_.Exception.Response) {
+           $env:MCP_SESSION_ID = $_.Exception.Response.Headers["mcp-session-id"]
+           Write-Host "Successfully captured Session ID: $env:MCP_SESSION_ID" -ForegroundColor Green
+       } else {
+           Write-Error "Failed to connect: $_"
+       }
+   }
+   ```
+
+4. **Step 3: Initialize Session:**
+   Send an `initialize` request via POST with the session ID:
+   ```powershell
+   $initParams = @{
+       jsonrpc = "2.0"
+       method = "initialize"
+       params = @{
+           protocolVersion = "2025-11-25"
+           capabilities = @{}
+           clientInfo = @{ name = "test-client"; version = "1.0.0" }
+       }
+       id = 0
+   } | ConvertTo-Json
+
+   Invoke-RestMethod -Method Post -Uri "$env:CLOUD_RUN_URL/mcp" -Headers @{
+       "Content-Type" = "application/json"
+       "Accept" = "application/json, text/event-stream"
+       "Authorization" = "Bearer $token"
+       "Mcp-Session-Id" = $env:MCP_SESSION_ID
+   } -Body $initParams
+   ```
+
+5. **Step 4: Call Tool:**
+   Once initialized, call the desired tool:
+   ```powershell
+   $postParams = @{
+       jsonrpc = "2.0"
+       method = "tools/call"
+       params = @{ name = "[TOOL_NAME]"; arguments = @{ [ARG_NAME] = "[ARG_VALUE]" } }
+       id = 1
+   } | ConvertTo-Json
+
+   Invoke-RestMethod -Method Post -Uri "$env:CLOUD_RUN_URL/mcp" -Headers @{
+       "Content-Type" = "application/json"
+       "Accept" = "application/json, text/event-stream"
+       "Authorization" = "Bearer $token"
+       "Mcp-Session-Id" = $env:MCP_SESSION_ID
+   } -Body $postParams
+   ```
+
 ### TODO
 - [ ] Migrate `system_message.md` and tool hints/instructions to **Vertex AI Prompt Management** to allow dynamic updates without Cloud Run redeployment.
+

@@ -211,6 +211,14 @@ resource "google_cloud_run_v2_service" "cr" {
         }
       }
       
+      dynamic "volume_mounts" {
+        for_each = try(each.value.gcs_volumes, {})
+        content {
+          name       = volume_mounts.key
+          mount_path = volume_mounts.value.mount_path
+        }
+      }
+      
       resources {
         limits = {
           cpu    = try(each.value.cpu, "1")
@@ -229,6 +237,17 @@ resource "google_cloud_run_v2_service" "cr" {
             version = "latest"
             path    = "secret" # Default filename within the mount path
           }
+        }
+      }
+    }
+    
+    dynamic "volumes" {
+      for_each = try(each.value.gcs_volumes, {})
+      content {
+        name = volumes.key
+        gcs {
+          bucket    = try(var.bucket_names[volumes.value.bucket], volumes.value.bucket)
+          read_only = try(volumes.value.read_only, false)
         }
       }
     }

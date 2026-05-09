@@ -110,11 +110,14 @@ def write_file(file_path: str = Field(description="Relative path to the file to 
         log_audit("workspace", "Write file - Access Denied", {"workspace": workspace_name, "file_path": file_path})
         raise PermissionError("Access denied.")
         
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text(content, encoding="utf-8")
-    
-    log_audit("workspace", f"Write file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content)})
-    return f"File successfully written to {file_path}"
+    try:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(content, encoding="utf-8")
+        log_audit("workspace", f"Write file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content)})
+        return f"File successfully written to {file_path}"
+    except Exception as e:
+        log_audit("workspace", "Write file failed", {"workspace": workspace_name, "file_path": file_path, "error": str(e)})
+        raise Exception("Access denied: permission denied or invalid path in workspace.")
 
 # --- 6. HTTP TRANSPORT & MIDDLEWARE ---
 # We use a simple function middleware to avoid BaseHTTPMiddleware issues with streaming

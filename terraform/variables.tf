@@ -292,6 +292,13 @@ variable "cr_names" {
             bucket_roles = {
                 "af-aidevs-workspaces" = ["roles/storage.objectAdmin"]
             }
+            gcs_volumes = {
+                "workspaces" = {
+                    bucket     = "af-aidevs-workspaces"
+                    mount_path = "/mnt/workspaces"
+                    read_only  = false
+                }
+            }
         }
         "cr-model-armor" = {
             source_dir    = "../cloud_run/cr-model-armor"

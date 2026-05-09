@@ -11,14 +11,14 @@ This is a Model Context Protocol (MCP) server that provides file system access t
 ### 2. Setup Local Workspace
 Create a local directory structure that mimics the production mount:
 ```powershell
-mkdir -Force "./local_workspaces/agent-s01e05"
-"Hello world" | Out-File -Encoding utf8 "./local_workspaces/agent-s01e05/test.txt"
+mkdir -Force "./data/workspaces/local"
+"Hello world" | Out-File -Encoding utf8 "./data/workspaces/local/test.txt"
 ```
 
 ### 3. Run the Server
 Set the environment variables and start the server:
 ```powershell
-$env:WORKSPACE_MOUNT_ROOT = "$(Get-Location)/local_workspaces"
+$env:WORKSPACE_MOUNT_ROOT = "$(Get-Location)/data/workspaces"
 $env:PORT = "8080"
 $env:LOG_LEVEL = "DEBUG"
 uv run python main.py
@@ -77,6 +77,88 @@ curl -X POST \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "list_files", "arguments": {"path": "."}}, "id": 1}' \
   "http://localhost:8080/mcp"
 ```
+
+### Option 4: Remote Testing (Cloud Run)
+This service follows the standard private MCP testing pattern defined in the repository root.
+
+**Connection Initialization:**
+See `GEMINI.md` section **"MCP Server Testing Pattern (Remote on Cloud Run)"** for instructions on how to get the OIDC token and initialize the session (`$env:MCP_SESSION_ID`).
+
+**Testing Tools:**
+Once the session is initialized, you can test the tools using the following commands:
+
+1. **Write File**:
+   ```powershell
+   $currentDate = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+   $writeParams = @{
+       jsonrpc = "2.0"
+       method = "tools/call"
+       params = @{
+           name = "write_file"
+           arguments = @{
+               file_path = "$env:MCP_SESSION_ID/test.md"
+               content = "Artur MCP server test in GCP: $currentDate"
+           }
+       }
+       id = 2
+   } | ConvertTo-Json
+
+   Invoke-RestMethod -Method Post `
+     -Uri "$env:CLOUD_RUN_URL/mcp" `
+     -Headers @{
+         "Content-Type" = "application/json"
+         "Accept" = "application/json, text/event-stream"
+         "Authorization" = "Bearer $token"
+         "Mcp-Session-Id" = $env:MCP_SESSION_ID
+     } `
+     -Body $writeParams
+   ```
+
+2. **List Files**:
+   ```powershell
+   $listParams = @{
+       jsonrpc = "2.0"
+       method = "tools/call"
+       params = @{
+           name = "list_files"
+           arguments = @{ path = $env:MCP_SESSION_ID }
+       }
+       id = 3
+   } | ConvertTo-Json
+
+   Invoke-RestMethod -Method Post `
+     -Uri "$env:CLOUD_RUN_URL/mcp" `
+     -Headers @{
+         "Content-Type" = "application/json"
+         "Accept" = "application/json, text/event-stream"
+         "Authorization" = "Bearer $token"
+         "Mcp-Session-Id" = $env:MCP_SESSION_ID
+     } `
+     -Body $listParams
+   ```
+
+3. **Read File**:
+   ```powershell
+   $readParams = @{
+       jsonrpc = "2.0"
+       method = "tools/call"
+       params = @{
+           name = "read_file"
+           arguments = @{ file_path = "$env:MCP_SESSION_ID/test.md" }
+       }
+       id = 4
+   } | ConvertTo-Json
+
+   Invoke-RestMethod -Method Post `
+     -Uri "$env:CLOUD_RUN_URL/mcp" `
+     -Headers @{
+         "Content-Type" = "application/json"
+         "Accept" = "application/json, text/event-stream"
+         "Authorization" = "Bearer $token"
+         "Mcp-Session-Id" = $env:MCP_SESSION_ID
+     } `
+     -Body $readParams
+   ```
 
 ## Deployment
 Deployed to Google Cloud Run via Terraform.
