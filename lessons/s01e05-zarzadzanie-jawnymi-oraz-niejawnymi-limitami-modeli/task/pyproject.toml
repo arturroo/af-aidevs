@@ -1,18 +1,22 @@
 [project]
-name = "s01e04-task"
+name = "s01e05-agent"
 version = "0.1.0"
-description = "S01E04 Task: sendit - Multimodal Documentation Analysis"
+description = "S01E05 Task: railway - Handling API limits and 503 errors"
 requires-python = "==3.12.11"
 dependencies = [
+    "fastapi==0.136.1",
+    "google-cloud-bigquery==3.41.0",
+    "google-genai==1.74.0",
+    "httpx==0.28.1",
     "langchain==1.2.15",
     "langchain-google-genai==4.2.2",
-    "google-genai==1.74.0",
-    "pydantic==2.9.2",
+    "langfuse==2.57.0",
+    "pydantic==2.13.4",
     "python-dotenv==1.2.2",
-    "httpx==0.28.1",
-    "google-cloud-bigquery==3.41.0",
     "python-frontmatter==1.1.0",
-    "tzdata==2025.1",
+    "tenacity==9.0.0",
+    "tzdata==2026.2",
+    "uvicorn==0.46.0",
 ]
 
 [tool.hatch.build.targets.wheel]

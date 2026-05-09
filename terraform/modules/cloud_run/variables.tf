@@ -16,3 +16,15 @@ variable "region" {
   type    = string
   default = "europe-west6"
 }
+
+variable "dataset_ids" {
+  description = "Map of dataset names to their IDs"
+  type        = map(string)
+  default     = {}
+}
+
+variable "bucket_names" {
+  description = "Map of bucket aliases to their actual names"
+  type        = map(string)
+  default     = {}
+}

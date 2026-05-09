@@ -55,9 +55,14 @@ module "cloud_run" {
     project_id = var.project_id
     cr_names = var.cr_names
     source_bucket = module.gstorage.gcf_bucket # Reusing the same bucket for source zips
+    
+    # Pass dataset IDs and bucket names for internal IAM management
+    dataset_ids  = { for k, v in google_bigquery_dataset.dataset : k => v.dataset_id }
+    bucket_names = module.gstorage.bucket_names
 
     depends_on = [
-        module.gstorage
+        module.gstorage,
+        google_bigquery_dataset.dataset
     ]
 }
 
@@ -171,7 +176,10 @@ resource "google_bigquery_table" "view" {
         query = templatefile(each.value["query_file"], {project_id = var.project_id})
         use_legacy_sql = try(each.value["use_legacy_sql"], false)
     }
-    depends_on = [google_bigquery_dataset.dataset]
+    depends_on = [
+        google_bigquery_dataset.dataset,
+        google_bigquery_table.internal_table
+    ]
 }
 
 resource "google_bigquery_table" "dependent_view" {
@@ -192,4 +200,31 @@ resource "google_bigquery_table" "dependent_view" {
     ]
 }
 
+# Cloud Run IAM roles are now managed internally within the cloud_run module
+# to ensure correct resource ordering (depends_on) and avoid race conditions.
+
+# 5. Global Audit Log Sinks (The "Google Way")
+resource "google_logging_project_sink" "audit_sink" {
+  for_each    = var.log_sinks
+  name        = each.key
+  destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${each.value.dataset_id}"
+  filter      = each.value.filter
+
+  unique_writer_identity = true
+
+  bigquery_options {
+    use_partitioned_tables = true
+  }
+}
+
+# 6. IAM for the Log Sinks to write to BigQuery
+resource "google_bigquery_dataset_iam_member" "sink_bq_editor" {
+  for_each   = var.log_sinks
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.dataset[each.value.dataset_id].dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = google_logging_project_sink.audit_sink[each.key].writer_identity
+  
+  depends_on = [google_bigquery_dataset.dataset]
+}
 

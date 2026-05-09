@@ -19,6 +19,14 @@ resource "google_artifact_registry_repository" "repo" {
   }
 }
 
+# Create a dedicated Service Account for each Cloud Run service
+resource "google_service_account" "sa_cr" {
+  for_each     = var.cr_names
+  account_id   = "sa-cr-${replace(each.key, "cr-", "")}"
+  display_name = "Service Account for ${each.key}"
+  project      = var.project_id
+}
+
 data "archive_file" "cr_source" {
   for_each    = var.cr_names
   type        = "zip"
@@ -52,6 +60,110 @@ resource "terraform_data" "build_image" {
   depends_on = [google_storage_bucket_object.zip]
 }
 
+locals {
+  # Project-level roles (e.g. roles/bigquery.jobUser)
+  project_iam_list = flatten([
+    for svc_name, cfg in var.cr_names : [
+      for role in try(cfg.roles, []) : {
+        svc  = svc_name
+        role = role
+      }
+    ]
+  ])
+
+  # Dataset-level roles (BigQuery)
+  dataset_iam_list = flatten([
+    for svc_name, cfg in var.cr_names : [
+      for dataset, roles in try(cfg.dataset_roles, {}) : [
+        for role in roles : {
+          svc     = svc_name
+          dataset = dataset
+          role    = role
+        }
+      ]
+    ]
+  ])
+
+  # Bucket-level roles (Cloud Storage)
+  bucket_iam_list = flatten([
+    for svc_name, cfg in var.cr_names : [
+      for bucket, roles in try(cfg.bucket_roles, {}) : [
+        for role in roles : {
+          svc    = svc_name
+          bucket = bucket
+          role   = role
+        }
+      ]
+    ]
+  ])
+
+  # Service-to-Service roles (Cloud Run Invoker)
+  cr_iam_list = flatten([
+    for svc_name, cfg in var.cr_names : [
+      for target_svc, roles in try(cfg.cr_roles, {}) : [
+        for role in roles : {
+          svc        = svc_name
+          target_svc = target_svc
+          role       = role
+        }
+      ]
+    ]
+  ])
+}
+
+# 1. Project-level IAM Roles
+resource "google_project_iam_member" "project_roles" {
+  for_each = { for entry in local.project_iam_list : "${entry.svc}-${entry.role}" => entry }
+
+  project = var.project_id
+  role    = each.value.role
+  member  = "serviceAccount:${google_service_account.sa_cr[each.value.svc].email}"
+}
+
+# 2. BigQuery Dataset IAM Roles
+resource "google_bigquery_dataset_iam_member" "dataset_roles" {
+  for_each = { for entry in local.dataset_iam_list : "${entry.svc}-${entry.dataset}-${entry.role}" => entry }
+
+  project    = var.project_id
+  dataset_id = try(var.dataset_ids[each.value.dataset], each.value.dataset)
+  role       = each.value.role
+  member     = "serviceAccount:${google_service_account.sa_cr[each.value.svc].email}"
+}
+
+# 3. Storage Bucket IAM Roles
+resource "google_storage_bucket_iam_member" "bucket_roles" {
+  for_each = { for entry in local.bucket_iam_list : "${entry.svc}-${entry.bucket}-${entry.role}" => entry }
+
+  bucket = try(var.bucket_names[each.value.bucket], each.value.bucket)
+  role   = each.value.role
+  member = "serviceAccount:${google_service_account.sa_cr[each.value.svc].email}"
+}
+
+# 4. Cloud Run Service-to-Service IAM Roles
+resource "google_cloud_run_v2_service_iam_member" "cr_invokers" {
+  for_each = { for entry in local.cr_iam_list : "${entry.svc}-${entry.target_svc}-${entry.role}" => entry }
+
+  project  = var.project_id
+  location = var.region
+  name     = each.value.target_svc
+  role     = each.value.role
+  member   = "serviceAccount:${google_service_account.sa_cr[each.value.svc].email}"
+
+  # The target service must exist before we can grant invoker roles on it
+  depends_on = [google_cloud_run_v2_service.cr]
+}
+
+# 5. Wait for IAM propagation (GCP IAM is eventually consistent)
+resource "time_sleep" "wait_for_iam" {
+  create_duration = "20s"
+
+  depends_on = [
+    google_project_iam_member.project_roles,
+    google_bigquery_dataset_iam_member.dataset_roles,
+    google_storage_bucket_iam_member.bucket_roles
+  ]
+}
+
 # Create Cloud Run v2 Service
 resource "google_cloud_run_v2_service" "cr" {
   for_each = var.cr_names
@@ -61,6 +173,7 @@ resource "google_cloud_run_v2_service" "cr" {
   project  = var.project_id
 
   template {
+    service_account = google_service_account.sa_cr[each.key].email
     annotations = {
       "run.googleapis.com/cpu-throttling" = tostring(try(each.value.cpu_throttling, true))
     }
@@ -98,6 +211,14 @@ resource "google_cloud_run_v2_service" "cr" {
         }
       }
       
+      dynamic "volume_mounts" {
+        for_each = try(each.value.gcs_volumes, {})
+        content {
+          name       = volume_mounts.key
+          mount_path = volume_mounts.value.mount_path
+        }
+      }
+      
       resources {
         limits = {
           cpu    = try(each.value.cpu, "1")
@@ -120,6 +241,17 @@ resource "google_cloud_run_v2_service" "cr" {
       }
     }
     
+    dynamic "volumes" {
+      for_each = try(each.value.gcs_volumes, {})
+      content {
+        name = volumes.key
+        gcs {
+          bucket    = try(var.bucket_names[volumes.value.bucket], volumes.value.bucket)
+          read_only = try(volumes.value.read_only, false)
+        }
+      }
+    }
+    
     session_affinity = try(each.value.session_affinity, false)
     max_instance_request_concurrency = try(each.value.concurrency, 80)
     
@@ -130,8 +262,12 @@ resource "google_cloud_run_v2_service" "cr" {
 
   }
 
-  # Ensure build completes before deploying/updating
-  depends_on = [terraform_data.build_image]
+  # Ensure build completes AND IAM roles (that affect startup) are active before deploying/updating
+  # We wait for time_sleep.wait_for_iam to give IAM roles time to propagate
+  depends_on = [
+    terraform_data.build_image,
+    time_sleep.wait_for_iam
+  ]
 
   lifecycle {
     ignore_changes = [
