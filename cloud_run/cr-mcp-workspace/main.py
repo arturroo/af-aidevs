@@ -1,162 +1,29 @@
 import os
 import logging
-import json
 import time
 import asyncio
-from typing import List
-from pathlib import Path
-from contextvars import ContextVar
 
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
+from contextlib import asynccontextmanager
 from fastmcp import FastMCP
-from fastmcp.dependencies import CurrentContext
-from fastmcp.server.context import Context
-from pydantic import Field
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-# --- 1. CONFIGURATION & CONSTANTS ---
+from state import SESSION_MAPPING, x_session_id_ctx
+from tools.list_files import register_list_files
+from tools.read_file import register_read_file
+from tools.write_file import register_write_file
+
+# --- 1. CONFIGURATION ---
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
-# The workspace root is determined by the mounted GCS bucket (Cloud Storage FUSE)
-# Typically mounted at /mnt/workspaces
-WORKSPACE_MOUNT_ROOT = Path(os.getenv("WORKSPACE_MOUNT_ROOT", "/mnt/workspaces"))
-RESOURCE_NAME = "cr-mcp-workspace"
-
-# --- 2. STATE & CONTEXT ---
-# ContextVar to store session_id across the request lifespan for auditability
-x_session_id_ctx: ContextVar[str] = ContextVar("x_session_id", default="unknown")
-
-# Mapping from MCP Session ID to X-Session-ID
-SESSION_MAPPING: dict[str, str] = {}
-
-# --- 3. AUDIT & UTILS ---
-def log_audit(actor: str, content: str, metadata: dict):
-    """Logs interaction as a structured JSON to stdout for Cloud Logging to capture."""
-    audit_entry = {
-        "log_type": "AUDIT",
-        "resource_name": RESOURCE_NAME,
-        "session_id": x_session_id_ctx.get(),
-        "actor": actor,
-        "content": content,
-        "metadata": metadata
-    }
-    # Lean Logging: print to stdout for Log Sinks to pick up asynchronously
-    print(json.dumps(audit_entry), flush=True)
-
-# --- 4. MCP SERVER INITIALIZATION ---
-
-# --- 4. MCP SERVER INITIALIZATION ---
-mcp = FastMCP("Workspace-Manager")
-
-# --- 5. TOOLS DEFINITION ---
-@mcp.tool()
-async def list_files(path: str = Field(description="Directory path relative to your session workspace to list. Example: '.'"), 
-                     ctx: Context = CurrentContext()) -> List[str]:
-    """Lists files in the agent's session workspace directory."""
-    mcp_session_id = ctx.session_id
-    
-    session_data = SESSION_MAPPING.get(mcp_session_id)
-    if not session_data:
-        raise PermissionError("Access denied. Session expired or invalid.")
-        
-    workspace_name = session_data["caller_identity"]
-    x_session_id = session_data["x_session_id"]
-    
-    # Update activity
-    session_data["last_activity"] = time.time()
-        
-    # Isolate to caller's directory and session
-    agent_workspace = (WORKSPACE_MOUNT_ROOT / workspace_name / x_session_id).resolve()
-    target_path = (agent_workspace / path).resolve()
-    
-    # Security: Ensure target path doesn't escape the agent's workspace
-    if not str(target_path).startswith(str(agent_workspace)):
-        log_audit("workspace", "List files - Access Denied", {"workspace": workspace_name, "path": path, "absolute_path": str(target_path)})
-        raise PermissionError("Access denied. Path traversal attempt detected.")
-        
-    if not target_path.exists():
-        log_audit("workspace", f"List files in {path} - Result: Not Found", {"workspace": workspace_name, "path": path, "absolute_path": str(target_path)})
-        return []
-        
-    files = [f.name for f in target_path.iterdir()]
-    log_audit("workspace", f"List files in {path}", {"workspace": workspace_name, "path": path, "count": len(files), "absolute_path": str(target_path)})
-    return files
-
-@mcp.tool()
-async def read_file(file_path: str = Field(description="Relative path to the file to read from the session workspace"), 
-                    ctx: Context = CurrentContext()) -> str:
-    """Reads the complete content of a file in the session workspace."""
-    mcp_session_id = ctx.session_id
-    
-    session_data = SESSION_MAPPING.get(mcp_session_id)
-    if not session_data:
-        raise PermissionError("Access denied. Session expired or invalid.")
-        
-    workspace_name = session_data["caller_identity"]
-    x_session_id = session_data["x_session_id"]
-    
-    # Update activity
-    session_data["last_activity"] = time.time()
-    
-    agent_workspace = (WORKSPACE_MOUNT_ROOT / workspace_name / x_session_id).resolve()
-    target_path = (agent_workspace / file_path).resolve()
-    
-    if not str(target_path).startswith(str(agent_workspace)):
-        log_audit("workspace", "Read file - Access Denied", {"workspace": workspace_name, "file_path": file_path, "absolute_path": str(target_path)})
-        raise PermissionError("Access denied.")
-        
-    try:
-        if not target_path.is_file():
-            raise FileNotFoundError(f"File {file_path} not found.")
-            
-        content = target_path.read_text(encoding="utf-8")
-        log_audit("workspace", f"Read file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content), "absolute_path": str(target_path)})
-        return content
-    except FileNotFoundError:
-        raise
-    except Exception as e:
-        log_audit("workspace", "Read file failed", {"workspace": workspace_name, "file_path": file_path, "error": str(e), "absolute_path": str(target_path)})
-        raise Exception("Access denied: permission denied or invalid path in workspace.")
-
-@mcp.tool()
-async def write_file(file_path: str = Field(description="Relative path to the file to write in the session workspace"), 
-                     content: str = Field(description="Content to write into the file"), 
-                     ctx: Context = CurrentContext()) -> str:
-    """Writes content to a file in the session workspace."""
-    mcp_session_id = ctx.session_id
-    
-    session_data = SESSION_MAPPING.get(mcp_session_id)
-    if not session_data:
-        raise PermissionError("Access denied. Session expired or invalid.")
-        
-    workspace_name = session_data["caller_identity"]
-    x_session_id = session_data["x_session_id"]
-    
-    # Update activity
-    session_data["last_activity"] = time.time()
-    
-    agent_workspace = (WORKSPACE_MOUNT_ROOT / workspace_name / x_session_id).resolve()
-    target_path = (agent_workspace / file_path).resolve()
-    
-    if not str(target_path).startswith(str(agent_workspace)):
-        log_audit("workspace", "Write file - Access Denied", {"workspace": workspace_name, "file_path": file_path, "absolute_path": str(target_path)})
-        raise PermissionError("Access denied.")
-        
-    try:
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(content, encoding="utf-8")
-        log_audit("workspace", f"Write file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content), "absolute_path": str(target_path)})
-        return f"File successfully written to {file_path}"
-    except Exception as e:
-        log_audit("workspace", "Write file failed", {"workspace": workspace_name, "file_path": file_path, "error": str(e), "absolute_path": str(target_path)})
-        raise Exception("Access denied: permission denied or invalid path in workspace.")
-
+# --- 2. MCP SERVER INITIALIZATION ---
+# --- 2. HTTP TRANSPORT & MIDDLEWARE ---
 async def cleanup_sessions():
     """Periodically removes expired sessions from SESSION_MAPPING."""
     while True:
@@ -171,7 +38,23 @@ async def cleanup_sessions():
             del SESSION_MAPPING[mcp_id]
             print(f"[DEBUG] Cleaned up expired session: {mcp_id}", flush=True)
 
-# We use a simple function middleware to avoid BaseHTTPMiddleware issues with streaming
+class WorkspaceManager(FastMCP):
+    @asynccontextmanager
+    async def lifespan(self):
+        task = asyncio.create_task(cleanup_sessions())
+        try:
+            yield
+        finally:
+            task.cancel()
+
+# --- 3. MCP SERVER INITIALIZATION ---
+mcp = WorkspaceManager("Workspace-Manager")
+
+# --- 4. TOOLS REGISTRATION ---
+register_list_files(mcp)
+register_read_file(mcp)
+register_write_file(mcp)
+
 async def session_id_middleware(request: Request, call_next):
     """Middleware to extract session_id from headers for auditability."""
     print(f"[DEBUG] All Headers: {dict(request.headers)}", flush=True)
@@ -185,8 +68,8 @@ async def session_id_middleware(request: Request, call_next):
         
     token = auth_header.split(" ")[1]
     try:
-        # Verify OIDC token
         id_info = id_token.verify_oauth2_token(token, google_requests.Request())
+        print(f"[DEBUG] Token Claims: {id_info}", flush=True)
         
         if not id_info.get("email_verified") or not id_info.get("email").endswith("@af-aidevs.iam.gserviceaccount.com"):
             return JSONResponse(status_code=403, content={"detail": "Domain not allowed or email not verified"})
@@ -215,18 +98,16 @@ async def session_id_middleware(request: Request, call_next):
             SESSION_MAPPING[mcp_session_id]["caller_identity"] = caller_identity
         
     x_session_id = x_session_id or "unknown"
-    token = x_session_id_ctx.set(x_session_id)
+    token_ctx = x_session_id_ctx.set(x_session_id)
     try:
         return await call_next(request)
     finally:
-        x_session_id_ctx.reset(token)
+        x_session_id_ctx.reset(token_ctx)
+
+
 
 # Create the Starlette app from MCP instance AFTER tools registration
 app = mcp.http_app()
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(cleanup_sessions())
 
 # middleware are executed in REVERSE order of addition (last added is outermost)
 # 1. First wrap with session ID handling
@@ -254,7 +135,7 @@ def print_routes(routes, prefix=""):
 print_routes(app.routes)
 print("-" * 35 + "\n")
 
-# --- 7. ENTRYPOINT ---
+# --- 5. ENTRYPOINT ---
 if __name__ == "__main__":
     import uvicorn
     # For local testing; Cloud Run will use uvicorn via Procfile (web: uvicorn main:app ...)
