@@ -54,7 +54,7 @@ resource "terraform_data" "build_image" {
   }
 
   provisioner "local-exec" {
-    command = "gcloud builds submit --project ${var.project_id} --pack image=${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:${data.archive_file.cr_source[each.key].output_md5} gs://${var.source_bucket}/${google_storage_bucket_object.zip[each.key].name}"
+    command = "gcloud builds submit ${try(each.value.source_dir, "${path.module}/../../cloud_run/${each.key}/")} --project ${var.project_id} ${try(each.value.use_pack, true) ? "--pack image=${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:${data.archive_file.cr_source[each.key].output_md5}" : "--config=${try(each.value.source_dir, "${path.module}/../../cloud_run/${each.key}/")}/cloudbuild.yaml --substitutions=_IMAGE=${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:${data.archive_file.cr_source[each.key].output_md5},_TOKEN=$(gcloud auth print-access-token)"}"
   }
 
   depends_on = [google_storage_bucket_object.zip]

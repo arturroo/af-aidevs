@@ -26,7 +26,7 @@ logger = logging.getLogger("SPK_Agent_v5")
 
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BASE_DIR.parents[2]
-sys.path.extend([str(BASE_DIR), str(ROOT_DIR)])
+sys.path.extend([str(BASE_DIR), str(ROOT_DIR / "python_packages")])
 
 from utils.prompts import load_system_prompt
 

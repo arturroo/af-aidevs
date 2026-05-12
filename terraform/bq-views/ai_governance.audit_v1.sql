@@ -1,11 +1,11 @@
 SELECT
   timestamp,
-  JSON_VALUE(jsonPayload, "$.resource_name") as resource_name,
-  JSON_VALUE(jsonPayload, "$.session_id") as session_id,
-  JSON_VALUE(jsonPayload, "$.actor") as actor,
-  JSON_VALUE(jsonPayload, "$.content") as content,
-  JSON_QUERY(jsonPayload, "$.metadata") as metadata
+  jsonPayload.resource_name as resource_name,
+  jsonPayload.session_id as session_id,
+  jsonPayload.actor as actor,
+  jsonPayload.content as content,
+  jsonPayload.metadata as metadata
 FROM
-  `${project_id}.ai_governance.stdout`
+  `${project_id}.ai_governance.run_googleapis_com_stdout`
 WHERE
-  JSON_VALUE(jsonPayload.log_type) = "AUDIT"
+  jsonPayload.log_type = "AUDIT"

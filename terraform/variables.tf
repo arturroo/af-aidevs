@@ -308,13 +308,14 @@ variable "cr_names" {
             cpu_throttling = true
             max_instances = 1
             concurrency   = 80
+            use_pack      = false
             env           = {
                 LOG_LEVEL = "DEBUG"
             }
             roles         = ["roles/aiplatform.user"]
         }
         "cr-s01e05-agent" = {
-            source_dir    = "../lessons/s01e05-zarzadzanie-jawnymi-oraz-niejawnymi-limitami-modeli/task"
+            source_dir    = "../lessons/s01e05-zarzadzanie-jawnymi-oraz-niejawnymi-limitami-modeli/task/cr-s01e05-agent"
             cpu           = "1"
             memory        = "512Mi"
             public        = false
@@ -353,3 +354,13 @@ variable "log_sinks" {
     }
 }
 
+variable "artifact_registries" {
+    description = "Google Artifact Registry repositories"
+    default = {
+        "python-packages" = {
+            format      = "PYTHON"
+            description = "Private Python packages for AI_Devs"
+            location    = "europe-west6"
+        }
+    }
+}

@@ -3,10 +3,21 @@ name = "cr-model-armor"
 version = "0.1.0"
 description = "Global Safety Guardrail Server"
 readme = "README.md"
-requires-python = "==3.12.11"
+requires-python = "==3.13.5"
 dependencies = [
+    "af-aidevs==0.1.1",
     "fastapi==0.136.1",
-    "google-genai==1.3.0",
+    "google-genai==1.74.0",
     "pydantic==2.13.4",
+    "python-frontmatter==1.1.0",
     "uvicorn==0.46.0",
 ]
+
+[[tool.uv.index]]
+name = "gar"
+url = "https://europe-west6-python.pkg.dev/af-aidevs/python-packages/simple/"
+explicit = true
+
+[tool.uv.sources]
+af-aidevs = { index = "gar" }
+

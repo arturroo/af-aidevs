@@ -228,3 +228,12 @@ resource "google_bigquery_dataset_iam_member" "sink_bq_editor" {
   depends_on = [google_bigquery_dataset.dataset]
 }
 
+# 7. Artifact Registry for Private Packages
+resource "google_artifact_registry_repository" "repo" {
+  for_each      = try(var.artifact_registries, {})
+  project       = var.project_id
+  location      = try(each.value.location, "europe-west6")
+  repository_id = each.key
+  description   = try(each.value.description, "Artifact Registry Repository")
+  format        = each.value.format
+}

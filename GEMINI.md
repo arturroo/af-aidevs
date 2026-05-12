@@ -12,12 +12,12 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
   - Example: `S01E01-programowanie-interakcji-z-modelem-jezykowym`
   - *Why?* This ensures alphabetical sorting perfectly matches chronological order, while keeping the context (the title) immediately visible without needing to open the folder to see what it's about.
 
-- **Markdown Files:** The primary notes file inside the directory should simply be named `lesson.md` or `notes.md` to avoid redundant paths (like `S01E01-title/S01E01-title.md`), though keeping the downloaded markdown name as-is (e.g., `s01e01-programowanie...md`) is also perfectly fine if downloaded directly from the course platform.
+- **Markdown Files:** The primary notes file inside the directory should simply be named `lesson.md` or `notes.md` to avoid redundant paths (like `S01E01-title/S01E01-title.md`), though keeping the downloaded markdown name as-is (e.g., `s01e01-programowanie...md`) is also perfectly fine if downloaded directly from the course platform. All markdown files and documentation (including READMEs) MUST be created in English to optimize token usage for the LLM.
 - **BigQuery:** Always create tables for a particular lesson in a BigQuery dataset named after that lesson (e.g., dataset `s01e03`).
 - GCP standards: BigQuery (`bq`), Firestore (`fs`), Cloud Functions entry point is always `main()`.
 - LLM Default: We use **Gemini 3.1 Flash Lite Preview** (`gemini-3.1-flash-lite-preview`) on **Vertex AI** via the modern `google-genai` SDK. Default location is `GOOGLE_CLOUD_LOCATION=global`.
 - Python package management: `uv` only. `pyproject.toml` only and must use precise library versions (no `^` operators) and dependencies should be sorted **alphabetically**.
-- **Python Version:** Always use `requires-python = "==3.12.11"` in `pyproject.toml` and in .python-version files to ensure consistent environment across all tasks.
+- **Python Version:** Always use `requires-python = "==3.13.5"` in `pyproject.toml` and in `.python-version` files to ensure consistent environment across all tasks. (Changed from 3.14.5 because 3.14 is not yet available as a stable release in `uv` and caused local build failures).
 - **Paths:** Always use `pathlib.Path` for file and directory operations. Avoid legacy `os.path` functions to ensure cross-platform compatibility and better readability.
 
 ### Security & Privacy
@@ -58,7 +58,40 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
       - **Tool Inputs:** Every tool input schema MUST include a `reasoning` field. This ensures the model justifies every action it takes, which is then captured in the audit logs.
       - **Tool Hints:** An optional `hint` field can be added to tool responses to provide the model with "progressive disclosure" or specific instructions on what to focus on next.
     - **Design Pattern: AgentResponse:** All final agent communications should follow the `AgentResponse` schema (including `reasoning` and `answer` fields) to ensure a consistent and auditable interface.
-    - **Design Pattern: system_prompt.md:** Always store system instructions in a `system_prompt.md` file with YAML frontmatter containing at least `model` and `temperature`. This separates instructions from logic and allows for better prompt management.
+    - **Design Pattern: system_prompt.md:** Always store system instructions in a `system_prompt.md` file with YAML frontmatter. This separates instructions from logic and allows for better prompt management.
+      - **Format**: The file MUST start with YAML frontmatter delimited by `---`.
+        ```markdown
+        ---
+        model: gemini-3.1-flash-lite-preview
+        temperature: 0.1
+        location: europe-west6
+        ---
+        Your system instruction text goes here...
+        ```
+      - **Loading**: Use the `load_system_prompt` function from the shared `utils` package (deployed to Artifact Registry) as the standard way to load prompts and metadata.
+      - **Example in `pyproject.toml`**:
+        ```toml
+        [project]
+        dependencies = [
+            "af-aidevs-utils==0.1.0",
+        ]
+
+        [[tool.uv.index]]
+        name = "gar"
+        url = "https://europe-west6-python.pkg.dev/af-aidevs/python-packages/simple/"
+        explicit = true
+        ```
+      - **Example in Python**:
+        ```python
+        from utils.prompts import load_system_prompt
+        
+        # Load prompt from current directory
+        prompt_config = load_system_prompt(base_dir=".", filename="system_prompt.md")
+        
+        print(prompt_config.system_prompt)
+        print(prompt_config.model)
+        ```
+      - **Package Versioning**: When modifying the `utils` package, always increment the version in `pyproject.toml` (e.g., from `0.1.0` to `0.1.1`) to avoid conflicts when publishing to Artifact Registry.
     - **Design Pattern: get_current_date():** To ensure optimal LLM prompt caching (Context Caching), do NOT hardcode the date in the system prompt. Instead, always provide a `get_current_date()` tool that the agent can call when temporal context is needed.
     - **Observability & Auditing:** 
       - Every interaction (thoughts, tool calls, results, and final answers) MUST be logged to an `audit` table in BigQuery for traceability and performance analysis.
@@ -169,4 +202,9 @@ To test a private MCP server deployed on Cloud Run (which requires IAM authentic
 
 ### TODO
 - [ ] Migrate `system_message.md` and tool hints/instructions to **Vertex AI Prompt Management** to allow dynamic updates without Cloud Run redeployment.
+
+
+### Fallback
+If none of the above rules apply, fall back to the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
+
 
