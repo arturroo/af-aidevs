@@ -29,7 +29,7 @@ def register_read_file(mcp: FastMCP):
         target_path = (agent_workspace / file_path).resolve()
         
         if not str(target_path).startswith(str(agent_workspace)):
-            log_audit("workspace", "Read file - Access Denied", {"workspace": workspace_name, "file_path": file_path, "absolute_path": str(target_path)})
+            log_audit("workspace", "Read file - Access Denied", {"workspace": workspace_name, "file_path": file_path, "absolute_path": str(target_path)}, session_id=x_session_id)
             raise PermissionError("Access denied.")
             
         try:
@@ -37,10 +37,10 @@ def register_read_file(mcp: FastMCP):
                 raise FileNotFoundError(f"File {file_path} not found.")
                 
             content = target_path.read_text(encoding="utf-8")
-            log_audit("workspace", f"Read file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content), "absolute_path": str(target_path)})
+            log_audit("workspace", f"Read file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content), "absolute_path": str(target_path)}, session_id=x_session_id)
             return content
         except FileNotFoundError:
             raise
         except Exception as e:
-            log_audit("workspace", "Read file failed", {"workspace": workspace_name, "file_path": file_path, "error": str(e), "absolute_path": str(target_path)})
+            log_audit("workspace", "Read file failed", {"workspace": workspace_name, "file_path": file_path, "error": str(e), "absolute_path": str(target_path)}, session_id=x_session_id)
             raise Exception("Access denied: permission denied or invalid path in workspace.")

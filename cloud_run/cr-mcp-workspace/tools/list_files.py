@@ -1,5 +1,5 @@
 import time
-from typing import List
+from typing import List, Dict, Any
 from pydantic import Field
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentContext
@@ -12,8 +12,8 @@ from utils import log_audit
 def register_list_files(mcp: FastMCP):
     @mcp.tool()
     async def list_files(path: str = Field(description="Directory path relative to your session workspace to list. Example: '.'"), 
-                         ctx: Context = CurrentContext()) -> List[str]:
-        """Lists files in the agent's session workspace directory."""
+                         ctx: Context = CurrentContext()) -> List[Dict[str, Any]]:
+        """Lists files and directories in the agent's session workspace directory with metadata."""
         mcp_session_id = ctx.session_id
         
         session_data = SESSION_MAPPING.get(mcp_session_id)
@@ -32,13 +32,25 @@ def register_list_files(mcp: FastMCP):
         
         # Security: Ensure target path doesn't escape the agent's workspace
         if not str(target_path).startswith(str(agent_workspace)):
-            log_audit("workspace", "List files - Access Denied", {"workspace": workspace_name, "path": path, "absolute_path": str(target_path)})
+            log_audit("workspace", "List files - Access Denied", {"workspace": workspace_name, "path": path, "absolute_path": str(target_path)}, session_id=x_session_id)
             raise PermissionError("Access denied. Path traversal attempt detected.")
             
         if not target_path.exists():
-            log_audit("workspace", f"List files in {path} - Result: Not Found", {"workspace": workspace_name, "path": path, "absolute_path": str(target_path)})
+            log_audit("workspace", f"List files in {path} - Result: Not Found", {"workspace": workspace_name, "path": path, "absolute_path": str(target_path)}, session_id=x_session_id)
             return []
             
-        files = [f.name for f in target_path.iterdir()]
-        log_audit("workspace", f"List files in {path}", {"workspace": workspace_name, "path": path, "count": len(files), "absolute_path": str(target_path)})
+        files = []
+        for f in target_path.iterdir():
+            try:
+                is_dir = f.is_dir()
+                files.append({
+                    "name": f.name,
+                    "type": "directory" if is_dir else "file",
+                    "size_bytes": f.stat().st_size if not is_dir else 0
+                })
+            except Exception:
+                # Skip files that are inaccessible or deleted mid-iteration
+                continue
+                
+        log_audit("workspace", f"List files in {path}", {"workspace": workspace_name, "path": path, "count": len(files), "absolute_path": str(target_path)}, session_id=x_session_id)
         return files

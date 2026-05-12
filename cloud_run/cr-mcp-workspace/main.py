@@ -13,7 +13,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from state import SESSION_MAPPING, x_session_id_ctx
+from state import SESSION_MAPPING
 from tools.list_files import register_list_files
 from tools.read_file import register_read_file
 from tools.write_file import register_write_file
@@ -61,6 +61,7 @@ async def session_id_middleware(request: Request, call_next):
     
     mcp_session_id = request.headers.get("mcp-session-id")
     x_session_id = request.headers.get("X-Session-ID")
+    
     auth_header = request.headers.get("Authorization")
     
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -71,13 +72,26 @@ async def session_id_middleware(request: Request, call_next):
         id_info = id_token.verify_oauth2_token(token, google_requests.Request())
         print(f"[DEBUG] Token Claims: {id_info}", flush=True)
         
-        if not id_info.get("email_verified") or not id_info.get("email").endswith("@af-aidevs.iam.gserviceaccount.com"):
-            return JSONResponse(status_code=403, content={"detail": "Domain not allowed or email not verified"})
+        # Check if email claim is present (user accounts and some SA tokens)
+        if "email" in id_info:
+            if not id_info.get("email_verified") or not id_info.get("email").endswith("@af-aidevs.iam.gserviceaccount.com"):
+                return JSONResponse(status_code=403, content={"detail": "Domain not allowed or email not verified"})
+            caller_identity = id_info.get("email")
+        else:
+            # Strict fallback for Artur's test impersonated token
+            ALLOWED_TEST_SUB = "110832476443475170542"
             
-        caller_email = id_info.get("email")
-        caller_identity = caller_email.split("@")[0]
-        if caller_identity.startswith("sa-"):
-            caller_identity = caller_identity[len("sa-"):]
+            if id_info.get("sub") != ALLOWED_TEST_SUB:
+                return JSONResponse(status_code=403, content={"detail": "Access denied: Unknown identity"})
+            
+            # If it matches, we know it's our test SA!
+            caller_identity = "sa-cr-s01e05-agent-integration-test@af-aidevs.iam.gserviceaccount.com"
+            print(f"[DEBUG] Recognized test SA via sub claim. Mapping to: {caller_identity}", flush=True)
+            
+        # Compromise: Strip domain but KEEP the 'sa-' prefix for clarity!
+        if "@" in caller_identity:
+            caller_identity = caller_identity.split("@")[0]
+            
         print(f"[DEBUG] Verified caller: {caller_identity}", flush=True)
     except Exception as e:
         print(f"[ERROR] Token verification failed: {e}", flush=True)

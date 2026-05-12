@@ -30,14 +30,14 @@ def register_write_file(mcp: FastMCP):
         target_path = (agent_workspace / file_path).resolve()
         
         if not str(target_path).startswith(str(agent_workspace)):
-            log_audit("workspace", "Write file - Access Denied", {"workspace": workspace_name, "file_path": file_path, "absolute_path": str(target_path)})
+            log_audit("workspace", "Write file - Access Denied", {"workspace": workspace_name, "file_path": file_path, "absolute_path": str(target_path)}, session_id=x_session_id)
             raise PermissionError("Access denied.")
             
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(content, encoding="utf-8")
-            log_audit("workspace", f"Write file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content), "absolute_path": str(target_path)})
+            log_audit("workspace", f"Write file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content), "absolute_path": str(target_path)}, session_id=x_session_id)
             return f"File successfully written to {file_path}"
         except Exception as e:
-            log_audit("workspace", "Write file failed", {"workspace": workspace_name, "file_path": file_path, "error": str(e), "absolute_path": str(target_path)})
+            log_audit("workspace", "Write file failed", {"workspace": workspace_name, "file_path": file_path, "error": str(e), "absolute_path": str(target_path)}, session_id=x_session_id)
             raise Exception("Access denied: permission denied or invalid path in workspace.")
