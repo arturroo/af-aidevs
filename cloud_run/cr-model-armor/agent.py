@@ -16,7 +16,7 @@ def check_safety(request: ArmorRequest) -> ArmorResponse:
     system_instruction_template = prompt_config.system_prompt
     model = prompt_config.model
     temperature = prompt_config.temperature
-    location = prompt_config.model_region
+    location = prompt_config.location
     
     # Format system instruction with the policy context
     system_instruction = system_instruction_template.format(policy_context=request.policy_context)

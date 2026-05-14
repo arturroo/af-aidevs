@@ -322,13 +322,16 @@ variable "cr_names" {
             cpu_throttling = true
             max_instances = 1
             concurrency   = 80
+            use_pack      = false
             env           = {
                 BACKEND = "langchain"
                 BQ_AUDIT_TABLE = "af-aidevs.s01e05.audit"
                 LANGSMITH_TRACING = "true"
                 LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
             }
-            roles         = ["roles/bigquery.jobUser", "roles/secretmanager.secretAccessor"]
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
             dataset_roles = {
                 "s01e05" = ["roles/bigquery.dataEditor"]
             }
@@ -339,6 +342,10 @@ variable "cr_names" {
             secrets       = {
                 LANGSMITH_API_KEY = "LANGSMITH_API_KEY"
                 LANGSMITH_PROJECT = "LANGSMITH_PROJECT"
+                MODEL_ARMOR_URL   = "MODEL_ARMOR_URL"
+                MCP_WORKSPACE_URL = "MCP_WORKSPACE_URL"
+                AIDEVS_API_KEY    = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY     = "AIDEVS_VERIFY"
             }
         }
     }
