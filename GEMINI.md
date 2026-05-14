@@ -16,9 +16,13 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - **BigQuery:** Always create tables for a particular lesson in a BigQuery dataset named after that lesson (e.g., dataset `s01e03`).
 - GCP standards: BigQuery (`bq`), Firestore (`fs`), Cloud Functions entry point is always `main()`.
 - LLM Default: We use **Gemini 3.1 Flash Lite Preview** (`gemini-3.1-flash-lite-preview`) on **Vertex AI** via the modern `google-genai` SDK. Default location is `GOOGLE_CLOUD_LOCATION=global`.
+  - Available models on Vertex AI: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/migrate
+  - Model regional availability: https://docs.cloud.google.com/gemini-enterprise-agent-platform/resources/locations
 - Python package management: `uv` only. `pyproject.toml` only and must use precise library versions (no `^` operators) and dependencies should be sorted **alphabetically**.
 - **Python Version:** Always use `requires-python = "==3.13.5"` in `pyproject.toml` and in `.python-version` files to ensure consistent environment across all tasks. (Changed from 3.14.5 because 3.14 is not yet available as a stable release in `uv` and caused local build failures).
 - **Paths:** Always use `pathlib.Path` for file and directory operations. Avoid legacy `os.path` functions to ensure cross-platform compatibility and better readability.
+
+- **Monolith Scaling:** If the `af_aidevs` shared package exceeds 10 modules, it must be thematically split into separate packages (e.g., `af_aidevs_x`, `af_aidevs_y`) to maintain small footprints and fast cold starts in Cloud Run. We use "Podejście A" with empty `__init__.py` files to prevent eager loading of heavy dependencies.
 
 ### Security & Privacy
 - **NEVER hardcode external API URLs** in source code, markdown documents, comments, or PRDs. This includes any URLs pointing to course platform APIs or third-party services (e.g., verification, location, access-level endpoints).
@@ -27,6 +31,8 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - When writing documentation or PRDs, refer to endpoints as their env var name only. Example: use `$AIDEVS_API_VERIFY` — never paste the actual URL.
 - This rule exists to respect the course authors' intellectual property and prevent API endpoint leakage in public repositories.
 - **Environment Variables Parsing:** Always use `os.getenv("VAR") or "default"` in Python instead of `os.environ.get("VAR", "default")`. This protects against accidentally exported empty strings from `.env` files overriding the defaults.
+- **LangSmith:** For simplicity, we use only one project in LangSmith across all services, referenced via the `LANGSMITH_PROJECT` environment variable.
+- **Model Armor:** Services using Model Armor for safety verification must have the `MODEL_ARMOR_URL` environment variable set. In GCP, this is retrieved from Secret Manager. Locally, it must be set in the `.env` file.
 
 ### Infrastructure (Terraform)
 - **Scope:** All Terraform code is centralized in the `/terraform` folder using standard Google Cloud Terraform module structures.
@@ -36,6 +42,16 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - **Service Accounts:** We use a strict prefix-based naming convention for Service Accounts to lower cognitive load and improve traceability in logs: `sa-{resource_type_short}-{name}`. Example: `sa-cr-mcp-workspace` for a Cloud Run service. This allows for immediate identification of the resource type an identity belongs to. Max length is 30 characters.
 - **Secrets:** All secrets must be stored in Secret Manager or in a local file `.env` in particular task folder. Never commit `.env` files. Artur will fillsecrets or .env files, you just say with what values to fill them.
 - **Local Auth:** When running locally on WSL/Windows, always remember to `unset GOOGLE_APPLICATION_CREDENTIALS` (bash) or `$env:GOOGLE_APPLICATION_CREDENTIALS=$null` (powershell) to avoid conflicts with infrastructure service accounts.
+
+### Local Testing with Private Packages
+To test a service locally that depends on the private `af_aidevs` package in Artifact Registry using `uv`:
+1. Add the index in `pyproject.toml`: `url = "https://europe-west6-python.pkg.dev/af-aidevs/python-packages/simple/"`.
+2. Set both the username and password (access token) in your environment:
+   ```powershell
+   $env:UV_INDEX_GAR_USERNAME="oauth2accesstoken"
+   $env:UV_INDEX_GAR_PASSWORD=$(gcloud auth print-access-token)
+   ```
+3. **Rule:** We always set both variables in PowerShell because hardcoding the user in the URL (e.g., `oauth2accesstoken@...`) does not work with `uv` (it fails to merge credentials and sending empty password).
 
 ### Your role
 - You are an AI coding assistant that helps me with the AI_Devs course.
@@ -52,6 +68,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 
 - **Contract-First Tool Design:** We prioritize defining the "Public API" (AI-facing schema) before writing the tool's logic.
   - **Schemas:** All tool input/output structures must be defined in `schemas.py` using Pydantic models. This serves as the source of truth for the LLM.
+    - **Pydantic Reserved Names:** Avoid using field names starting with `model_` in Pydantic models to prevent conflicts with Pydantic v2 internal methods, unless we are mapping an external API schema that we do not control and cannot easily alias.
     - **Explicit Metadata:** Every field in a Pydantic model MUST include a `Field()` definition with a clear `description` and a relevant `example`. These are treated as mandatory instructions for the LLM to ensure high accuracy and reduce hallucination. Additional validation constraints (e.g., `ge`, `le`, `min_length`) should be used whenever possible.
     - **Reasoning & Hints:** 
       - **Structured Output:** When forcing the model to generate a structured response (e.g., `with_structured_output`), a `reasoning` field is MANDATORY. This provides a clear audit trail and helps in understanding the model's decision-making process.
@@ -200,8 +217,72 @@ To test a private MCP server deployed on Cloud Run (which requires IAM authentic
    } -Body $postParams
    ```
 
+### LangChain MCP Integration Pattern (Dynamic Discovery with Caching Auth)
+To connect a LangChain agent to an MCP server over HTTP with dynamic tool discovery and secure, cached Google OIDC authentication, use the following pattern based on `langchain-mcp-adapters`:
+
+1. **Dependencies:**
+   Add to `pyproject.toml`:
+   - `langchain-mcp-adapters==0.2.2`
+
+2. **Pattern Implementation:**
+   ```python
+   import os
+   import httpx
+   from datetime import datetime
+   from google.auth.transport.requests import Request
+   from google.oauth2 import id_token
+   from langchain_mcp_adapters.client import MultiServerMCPClient
+
+   class GoogleOIDCAuth(httpx.Auth):
+       """Custom HTTPX Auth to fetch and cache Google OIDC tokens."""
+       def __init__(self, audience: str):
+           self.audience = audience
+           self._token = None
+           self._expiry = 0
+           
+       def _get_token(self):
+           # Support local testing via env var
+           env_token = os.getenv("MCP_WORKSPACE_TOKEN")
+           if env_token:
+               return env_token
+               
+           now = datetime.now().timestamp()
+           if self._token and now < self._expiry:
+               return self._token
+               
+           try:
+               # Fetch fresh token from metadata server
+               self._token = id_token.fetch_id_token(Request(), self.audience)
+               self._expiry = now + 3000 # Cache for 50 minutes
+               return self._token
+           except Exception:
+               return ""
+
+       def auth_flow(self, request):
+           token = self._get_token()
+           if token:
+               request.headers["Authorization"] = f"Bearer {token}"
+           yield request
+
+   async def get_mcp_tools(session_id: str):
+       mcp_url = os.getenv("MCP_WORKSPACE_URL") or "https://cr-mcp-workspace-qsvqxjqyrq-oa.a.run.app"
+       
+       client = MultiServerMCPClient(
+           {
+               "workspace": {
+                   "transport": "http",
+                   "url": f"{mcp_url}/mcp",
+                   "headers": { "X-Session-ID": session_id },
+                   "auth": GoogleOIDCAuth(mcp_url),
+               }
+           }
+       )
+       return await client.get_tools()
+   ```
+
 ### TODO
 - [ ] Migrate `system_message.md` and tool hints/instructions to **Vertex AI Prompt Management** to allow dynamic updates without Cloud Run redeployment.
+- [ ] **Lesson S02E01:** Test `ainvoke` and `Custom Callback Handler` for auditing. (For S01E05, we are using the `for` loop with `astream` in the agent code).
 
 
 ### Fallback

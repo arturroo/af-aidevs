@@ -13,7 +13,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from state import SESSION_MAPPING
+from state import SESSION_MAPPING, x_session_id_ctx
 from tools.list_files import register_list_files
 from tools.read_file import register_read_file
 from tools.write_file import register_write_file
@@ -57,7 +57,7 @@ register_write_file(mcp)
 
 async def session_id_middleware(request: Request, call_next):
     """Middleware to extract session_id from headers for auditability."""
-    print(f"[DEBUG] All Headers: {dict(request.headers)}", flush=True)
+    # print(f"[DEBUG] All Headers: {dict(request.headers)}", flush=True)
     
     mcp_session_id = request.headers.get("mcp-session-id")
     x_session_id = request.headers.get("X-Session-ID")
@@ -70,7 +70,7 @@ async def session_id_middleware(request: Request, call_next):
     token = auth_header.split(" ")[1]
     try:
         id_info = id_token.verify_oauth2_token(token, google_requests.Request())
-        print(f"[DEBUG] Token Claims: {id_info}", flush=True)
+        # print(f"[DEBUG] Token Claims: {id_info}", flush=True)
         
         # Check if email claim is present (user accounts and some SA tokens)
         if "email" in id_info:

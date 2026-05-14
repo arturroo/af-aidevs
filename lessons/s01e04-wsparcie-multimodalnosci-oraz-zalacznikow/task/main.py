@@ -28,7 +28,7 @@ BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BASE_DIR.parents[2]
 sys.path.extend([str(BASE_DIR), str(ROOT_DIR / "python_packages")])
 
-from utils.prompts import load_system_prompt
+from af_aidevs.utils.prompts import load_system_prompt
 
 # Constants from environment
 AIDEVS_VERIFY = os.getenv("AIDEVS_VERIFY")
@@ -112,7 +112,7 @@ llm = ChatGoogleGenerativeAI(
     model=config.model,
     temperature=config.temperature,
     project=GOOGLE_CLOUD_PROJECT,
-    location=config.model_region,
+    location=config.location,
     vertexai=True
 )
 
