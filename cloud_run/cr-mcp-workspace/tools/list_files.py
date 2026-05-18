@@ -34,6 +34,10 @@ def register_list_files(mcp: FastMCP):
             
         # Isolate to caller's directory and session
         agent_workspace = (WORKSPACE_MOUNT_ROOT / workspace_name / x_session_id).resolve()
+        
+        # Ensure the session workspace exists before we try to list it
+        agent_workspace.mkdir(parents=True, exist_ok=True)
+        
         target_path = (agent_workspace / path).resolve()
         
         # Security: Ensure target path doesn't escape the agent's workspace

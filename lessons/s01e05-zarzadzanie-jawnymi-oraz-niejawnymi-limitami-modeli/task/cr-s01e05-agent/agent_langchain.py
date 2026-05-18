@@ -123,7 +123,13 @@ async def run_langchain_agent(base_dir: Path):
         
     messages = [HumanMessage(content=initial_input)]
     
+    iteration = 0
+    max_iterations = 15
     async for event in agent_executor.astream({"messages": messages}, stream_mode="values"):
+        iteration += 1
+        if iteration > max_iterations:
+            logger.error(f"Agent reached maximum iterations ({max_iterations}). Terminating loop to prevent infinite loops.")
+            break
         last_msg = event["messages"][-1]
         
         actor = "agent" if isinstance(last_msg, AIMessage) else "user" if isinstance(last_msg, HumanMessage) else "tool"
