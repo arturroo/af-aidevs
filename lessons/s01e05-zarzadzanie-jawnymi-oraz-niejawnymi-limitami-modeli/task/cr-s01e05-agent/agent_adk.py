@@ -8,7 +8,7 @@ from google.adk import Agent, Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types
 
-from langfuse.decorators import observe
+from langfuse.decorators import observe, langfuse_context
 
 from schemas import AgentResponse
 from af_aidevs.utils.prompts import load_system_prompt
@@ -19,12 +19,12 @@ from tools.get_current_date import get_current_date
 
 logger = logging.getLogger(__name__)
 
-api_tool_instance = RailwayApi()
+railway_api = RailwayApi()
 
-def adk_api_call(reasoning: str, answer: dict) -> str:
+def railway_api_call(reasoning: str, answer: dict) -> str:
     """Calls the central /verify API to perform tasks. Provide reasoning and the 'answer' payload."""
     try:
-        res = api_tool_instance._run(reasoning=reasoning, answer=answer)
+        res = railway_api._run(reasoning=reasoning, answer=answer)
         return json.dumps(res)
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -38,6 +38,12 @@ async def run_adk_agent(base_dir: Path):
     session_id = f"session_adk_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     logger.info(f"Starting ADK Agent Session: {session_id}")
     
+    # Configure Langfuse trace metadata
+    langfuse_context.update_current_trace(
+        session_id=session_id,
+        user_id="default_user"
+    )
+    
     config = load_system_prompt(base_dir)
     google_project = os.getenv("GOOGLE_CLOUD_PROJECT")
     
@@ -49,13 +55,14 @@ async def run_adk_agent(base_dir: Path):
     initial_message = "Musisz **aktywować trasę kolejową o nazwie X-01** za pomocą API uzywajac narzedzia RailwayApi, do którego nie mamy dokumentacji. Wiemy tylko, że API obsługuje akcję `help`, która zwraca jego własną dokumentację — od niej należy zacząć."
     
     # Set session and policy for the tool instance
-    api_tool_instance.session_id = session_id
-    api_tool_instance.policy = policy
+    railway_api.session_id = session_id
+    railway_api.policy = policy
     
     logger.info("Verifying initial input with Model Armor...")
     is_safe = await model_armor.verify(initial_message, policy, session_id)
     if not is_safe:
         logger.error("Initial input rejected by Model Armor.")
+        langfuse_context.flush()
         return
         
     await log_to_bq(session_id, "user", initial_message)
@@ -65,7 +72,7 @@ async def run_adk_agent(base_dir: Path):
         name="railway_agent",
         model=config.model,
         instruction=config.system_prompt,
-        tools=[adk_api_call, adk_get_current_date]
+        tools=[railway_api_call, adk_get_current_date]
     )
     
     session_service = InMemorySessionService()
@@ -103,7 +110,7 @@ async def run_adk_agent(base_dir: Path):
                         text = "REDACTED: Output violated safety policy."
                     logger.info(f"Agent reply:\n{text}")
                     await log_to_bq(session_id, "agent", text)
-                    if "{FLG:" in text:
+                    if "FLG:" in text:
                         logger.info("Found flag! Task complete.")
                 elif part.function_call:
                     fn_name = part.function_call.name
@@ -128,3 +135,6 @@ async def run_adk_agent(base_dir: Path):
                         await log_to_bq(session_id, "tool", res_json_str, metadata=metadata)
                     except Exception:
                         await log_to_bq(session_id, "tool", res_json_str)
+
+    # Flush pending Langfuse events before returning
+    langfuse_context.flush()
