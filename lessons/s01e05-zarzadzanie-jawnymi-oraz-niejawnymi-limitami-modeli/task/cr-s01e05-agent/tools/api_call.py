@@ -36,6 +36,18 @@ def wait_strategy(retry_state):
     # Fallback to exponential wait for 503
     return wait_exponential(multiplier=1, min=2, max=60)(retry_state=retry_state)
 
+def log_audit(actor: str, content: str, metadata: dict, session_id: str):
+    """Logs interaction as a structured JSON to stdout for Cloud Logging to capture."""
+    audit_entry = {
+        "log_type": "AUDIT",
+        "resource_name": "cr-s01e05-agent-tool",
+        "session_id": session_id or "unknown",
+        "actor": actor,
+        "content": content,
+        "metadata": metadata
+    }
+    print(json.dumps(audit_entry), flush=True)
+
 class RailwayApi(BaseTool):
     name: str = "RailwayApi"
     description: str = "Calls the central /verify API to perform tasks. Provide reasoning and the 'answer' payload."
@@ -57,6 +69,17 @@ class RailwayApi(BaseTool):
         # Simulates overload
         if response.status_code == 503:
             logger.warning("Received 503 Service Unavailable, retrying...")
+            log_audit(
+                actor="tool-retry",
+                content="Received 503 Service Unavailable, retrying...",
+                metadata={
+                    "status_code": 503,
+                    "headers": dict(response.headers),
+                    "url": url,
+                    "action": json_payload.get("answer", {}).get("action")
+                },
+                session_id=self.session_id
+            )
             raise ServiceUnavailableError("503 Service Unavailable")
             
         # Handle 429 Rate Limit
@@ -72,6 +95,18 @@ class RailwayApi(BaseTool):
                 except ValueError:
                     pass
             logger.warning(f"Received 429 Too Many Requests. Server says wait {wait_time}s.")
+            log_audit(
+                actor="tool-retry",
+                content=f"Received 429 Too Many Requests. Server says wait {wait_time}s.",
+                metadata={
+                    "status_code": 429,
+                    "headers": dict(response.headers),
+                    "url": url,
+                    "action": json_payload.get("answer", {}).get("action"),
+                    "wait_time": wait_time
+                },
+                session_id=self.session_id
+            )
             raise RateLimitError(wait_time)
             
         return response
@@ -94,15 +129,19 @@ class RailwayApi(BaseTool):
             
             headers = dict(response.headers)
             
-            reset_header = headers.get("x-ratelimit-reset") or headers.get("retry-after")
-            if reset_header:
-                try:
-                    wait_time = int(reset_header)
-                    if wait_time > 0 and wait_time < 300: # Sanity check
-                        logger.info(f"Rate limit header found. Sleeping for {wait_time} seconds.")
-                        time.sleep(wait_time)
-                except ValueError:
-                    pass
+            # Log all API response headers clearly in the format {header: value} for auditability
+            logger.info(f"--- API Response Headers: {json.dumps(headers)} ---")
+            
+            # [COMMENTED OUT AS PER ARTUR'S REQUEST TO PREVENT 4-MINUTE WAIT ON 200 OK RESPONSES]
+            # reset_header = headers.get("x-ratelimit-reset") or headers.get("retry-after")
+            # if reset_header:
+            #     try:
+            #         wait_time = int(reset_header)
+            #         if wait_time > 0 and wait_time < 300: # Sanity check
+            #             logger.info(f"Rate limit header found. Sleeping for {wait_time} seconds.")
+            #             time.sleep(wait_time)
+            #     except ValueError:
+            #         pass
             
             try:
                 body = response.json()

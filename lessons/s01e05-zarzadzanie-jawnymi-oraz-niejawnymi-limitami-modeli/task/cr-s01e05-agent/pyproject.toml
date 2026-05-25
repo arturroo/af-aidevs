@@ -8,6 +8,7 @@ dependencies = [
     "fastapi==0.136.1",
     "fastmcp==3.2.4",
     "google-cloud-bigquery==3.41.0",
+    "google-adk==1.33.0", #  - starlette==1.0.0 + starlette==0.52.1
     "google-genai==1.74.0",
     "httpx==0.28.1",
     "langchain==1.2.15",

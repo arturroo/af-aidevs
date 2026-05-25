@@ -283,6 +283,7 @@ To connect a LangChain agent to an MCP server over HTTP with dynamic tool discov
 ### TODO
 - [ ] Migrate `system_message.md` and tool hints/instructions to **Vertex AI Prompt Management** to allow dynamic updates without Cloud Run redeployment.
 - [ ] **Lesson S02E01:** Test `ainvoke` and `Custom Callback Handler` for auditing. (For S01E05, we are using the `for` loop with `astream` in the agent code).
+- [ ] Export `get_current_date` as a tool to a new MCP server `cr-mcp-utils`.
 
 
 ### Fallback

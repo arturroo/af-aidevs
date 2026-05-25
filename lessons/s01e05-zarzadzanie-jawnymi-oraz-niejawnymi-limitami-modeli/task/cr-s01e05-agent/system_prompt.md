@@ -14,4 +14,4 @@ Important Notes:
 1. The API simulates server overloads by returning `503 Service Unavailable`. The tool you have (`RailwayApi`) will automatically retry on 503s with exponential backoff.
 2. The API has strict rate limits. The tool handles backoffs based on rate limit headers automatically.
 3. Be patient and methodical. Only make API calls that are necessary. Ensure you provide the correct parameters based on the documentation provided by previous calls.
-4. When you receive the flag (`{FLG:...}`), return it using the final structured output.
+4. When you receive the flag (`{FLG:...}`), you MUST stop making tool calls. Simply reply with the flag text in your message to end the session. Do not call any more tools.
