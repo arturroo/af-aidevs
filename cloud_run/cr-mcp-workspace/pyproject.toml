@@ -8,6 +8,7 @@ dependencies = [
     "fastapi==0.136.1",
     "fastmcp==3.2.4",
     "google-auth==2.30.0",
+    "markdown-it-py==3.0.0",
     "pydantic==2.13.4",
     "requests==2.32.3",
     "uvicorn==0.46.0",

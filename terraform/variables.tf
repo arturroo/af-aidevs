@@ -300,6 +300,29 @@ variable "cr_names" {
                 }
             }
         }
+        "cr-mcp-web-gateway" = {
+            source_dir    = "../cloud_run/cr-mcp-web-gateway"
+            cpu           = "1"
+            memory        = "512Mi"
+            public        = false
+            cpu_throttling = true
+            max_instances = 1
+            concurrency   = 80
+            env           = {
+                LOG_LEVEL = "DEBUG"
+                WORKSPACE_MOUNT_ROOT = "/mnt/workspaces"
+            }
+            bucket_roles = {
+                "af-aidevs-workspaces" = ["roles/storage.objectAdmin"]
+            }
+            gcs_volumes = {
+                "workspaces" = {
+                    bucket     = "af-aidevs-workspaces"
+                    mount_path = "/mnt/workspaces"
+                    read_only  = false
+                }
+            }
+        }
         "cr-model-armor" = {
             source_dir    = "../cloud_run/cr-model-armor"
             cpu           = "1"

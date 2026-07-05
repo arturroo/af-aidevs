@@ -17,6 +17,10 @@ from state import SESSION_MAPPING, x_session_id_ctx
 from tools.list_files import register_list_files
 from tools.read_file import register_read_file
 from tools.write_file import register_write_file
+from tools.system_grep import register_system_grep
+from tools.head import register_head
+from tools.tail import register_tail
+from tools.read_markdown_section import register_read_markdown_section
 
 # --- 1. CONFIGURATION ---
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -54,6 +58,10 @@ mcp = WorkspaceManager("Workspace-Manager")
 register_list_files(mcp)
 register_read_file(mcp)
 register_write_file(mcp)
+register_system_grep(mcp)
+register_head(mcp)
+register_tail(mcp)
+register_read_markdown_section(mcp)
 
 async def session_id_middleware(request: Request, call_next):
     """Middleware to extract session_id from headers for auditability."""

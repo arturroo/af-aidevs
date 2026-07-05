@@ -1,0 +1,39 @@
+[project]
+name = "s02e01-agent"
+version = "0.1.0"
+description = "S02E01 Task: categorize - Categorization Agent with MCP Ecosystem Integration"
+requires-python = "==3.13.5"
+dependencies = [
+    "af-aidevs==0.1.6",
+    "fastapi==0.136.1",
+    "fastmcp==3.2.4",
+    "google-cloud-bigquery==3.41.0",
+    "google-adk==1.33.0",
+    "google-genai==1.74.0",
+    "httpx==0.28.1",
+    "langchain==1.2.15",
+    "langchain-google-genai==4.2.2",
+    "langchain-mcp-adapters==0.2.2",
+    "langfuse==2.57.0",
+    "pydantic==2.13.4",
+    "python-dotenv==1.2.2",
+    "python-frontmatter==1.1.0",
+    "tenacity==9.0.0",
+    "tzdata==2026.2",
+    "uvicorn==0.46.0",
+]
+
+[[tool.uv.index]]
+name = "gar"
+url = "https://europe-west6-python.pkg.dev/af-aidevs/python-packages/simple/"
+explicit = true
+
+[tool.uv.sources]
+af-aidevs = { index = "gar" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
