@@ -24,6 +24,14 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 
 - **Monolith Scaling:** If the `af_aidevs` shared package exceeds 10 modules, it must be thematically split into separate packages (e.g., `af_aidevs_x`, `af_aidevs_y`) to maintain small footprints and fast cold starts in Cloud Run. We use "Podejście A" with empty `__init__.py` files to prevent eager loading of heavy dependencies.
 
+### Task Specification Documents (Requirements & Decisions Workflow)
+To ensure solid software engineering principles and alignment before implementation, every lesson task follows this document lifecycle inside its `task/` directory by executing skills:
+1. **BRD (Business Requirements Document):** Generate a `BRD.md` file containing the extracted/translated task requirements from the lesson markdown. Skill: create-brd
+2. **ADR (Architecture Decision Record):** Generate an `ADR.md` file detailing architectural and design choices (such as technologies used, caching strategies, model settings, and exception handling). Skill: create-adr
+3. **PRD (Product Requirements Document):** Generate a `PRD.md` file based on the BRD and ADR that serves as the final specification. Skill: create-prd
+4. **Implementation & Plan:** Implement the PRD. Skill: implement-prd.
+
+
 ### Security & Privacy
 - **NEVER hardcode external API URLs** in source code, markdown documents, comments, or PRDs. This includes any URLs pointing to course platform APIs or third-party services (e.g., verification, location, access-level endpoints).
 - All such URLs **must be stored exclusively in `.env` files** (which are gitignored) and referenced in code/docs only by their environment variable name (e.g., `AIDEVS_API_VERIFY`, `AIDEVS_API_LOCATION`, `AIDEVS_API_ACCESSLEVEL`).
@@ -285,8 +293,6 @@ To connect a LangChain agent to an MCP server over HTTP with dynamic tool discov
 - [ ] **Lesson S02E01:** Test `ainvoke` and `Custom Callback Handler` for auditing. (For S01E05, we are using the `for` loop with `astream` in the agent code).
 - [ ] Export `get_current_date` as a tool to a new MCP server `cr-mcp-utils`.
 
-
 ### Fallback
 If none of the above rules apply, fall back to the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
-
-
+```
