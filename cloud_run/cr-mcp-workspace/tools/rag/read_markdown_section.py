@@ -1,13 +1,11 @@
-import time
 from pydantic import Field
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentContext
 from fastmcp.server.context import Context
 from markdown_it import MarkdownIt
 
+from utils import get_safe_path, log_audit
 from state import SESSION_MAPPING
-from config import WORKSPACE_MOUNT_ROOT
-from utils import log_audit
 
 def register_read_markdown_section(mcp: FastMCP):
     @mcp.tool()
@@ -19,21 +17,11 @@ def register_read_markdown_section(mcp: FastMCP):
         """Parses a markdown file via AST and returns the section under the specified header."""
         mcp_session_id = ctx.session_id
         session_data = SESSION_MAPPING.get(mcp_session_id)
-        if not session_data:
-            raise PermissionError("Access denied. Session expired or invalid.")
-            
-        workspace_name = session_data["caller_identity"]
-        x_session_id = session_data["x_session_id"]
-        session_data["last_activity"] = time.time()
-        
-        agent_workspace = (WORKSPACE_MOUNT_ROOT / workspace_name / x_session_id).resolve()
-        target_path = (agent_workspace / file_path).resolve()
-        
-        if not str(target_path).startswith(str(agent_workspace)):
-            log_audit("workspace", "Markdown section - Access Denied", {"workspace": workspace_name, "file_path": file_path, "absolute_path": str(target_path)}, session_id=x_session_id)
-            raise PermissionError("Access denied: path traversal detected.")
-            
+        x_session_id = session_data["x_session_id"] if session_data else "unknown"
+        workspace_name = session_data["caller_identity"] if session_data else "unknown"
+
         try:
+            target_path = get_safe_path(file_path, ctx)
             if not target_path.is_file():
                 raise FileNotFoundError(f"File {file_path} not found.")
                 
@@ -51,7 +39,6 @@ def register_read_markdown_section(mcp: FastMCP):
                     next_token = tokens[i+1] if i + 1 < len(tokens) else None
                     if next_token and next_token.type == "inline":
                         heading_text = next_token.content.strip().lower()
-                        # Match exact or substring
                         if header_title.strip().lower() in heading_text:
                             target_level = level
                             target_index = i

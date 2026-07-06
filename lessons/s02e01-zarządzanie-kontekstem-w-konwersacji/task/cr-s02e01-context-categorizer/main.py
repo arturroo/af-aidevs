@@ -186,7 +186,23 @@ async def main():
 
     # Read CSV via Workspace Manager
     logger.info("Reading CSV content...")
-    csv_content = await read_file_tool.ainvoke({"file_path": "categorize.csv"})
+    csv_response = await read_file_tool.ainvoke({"file_path": "categorize.csv"})
+
+    # Strictly parse as FileContentResponse structure
+    if isinstance(csv_response, str):
+        parsed = json.loads(csv_response)
+        csv_content = parsed["content"]
+        csv_hint = parsed.get("hint")
+    elif isinstance(csv_response, dict):
+        csv_content = csv_response["content"]
+        csv_hint = csv_response.get("hint")
+    else:
+        # Fallback to direct attribute lookup if parsed as an object/Pydantic model
+        csv_content = csv_response.content
+        csv_hint = getattr(csv_response, "hint", None)
+
+    if csv_hint:
+        logger.info(f"Received hint from file read tool: {csv_hint}")
 
     # Parse CSV items
     items = []

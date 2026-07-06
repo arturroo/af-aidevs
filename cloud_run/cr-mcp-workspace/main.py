@@ -14,13 +14,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from state import SESSION_MAPPING, x_session_id_ctx
-from tools.list_files import register_list_files
-from tools.read_file import register_read_file
-from tools.write_file import register_write_file
-from tools.system_grep import register_system_grep
-from tools.head import register_head
-from tools.tail import register_tail
-from tools.read_markdown_section import register_read_markdown_section
+from tools.filesystem.read_file import register_read_file
+from tools.filesystem.write_file import register_write_file
+from tools.filesystem.list_files import register_list_files
+from tools.rag.grep import register_grep
+from tools.rag.head import register_head
+from tools.rag.tail import register_tail
+from tools.rag.read_markdown_section import register_read_markdown_section
 
 # --- 1. CONFIGURATION ---
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -55,10 +55,10 @@ class WorkspaceManager(FastMCP):
 mcp = WorkspaceManager("Workspace-Manager")
 
 # --- 4. TOOLS REGISTRATION ---
-register_list_files(mcp)
 register_read_file(mcp)
 register_write_file(mcp)
-register_system_grep(mcp)
+register_list_files(mcp)
+register_grep(mcp)
 register_head(mcp)
 register_tail(mcp)
 register_read_markdown_section(mcp)

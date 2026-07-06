@@ -1,5 +1,5 @@
 [project]
-name = "s02e01-agent"
+name = "cr-s02e01-context-categorizer"
 version = "0.1.0"
 description = "S02E01 Task: categorize - Categorization Agent with MCP Ecosystem Integration"
 requires-python = "==3.13.5"

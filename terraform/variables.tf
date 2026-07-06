@@ -279,7 +279,6 @@ variable "cr_names" {
             }
         }
         "cr-mcp-workspace" = {
-            source_dir    = "../cloud_run/cr-mcp-workspace"
             cpu           = "1"
             memory        = "512Mi"
             public        = false
@@ -301,7 +300,6 @@ variable "cr_names" {
             }
         }
         "cr-mcp-web-gateway" = {
-            source_dir    = "../cloud_run/cr-mcp-web-gateway"
             cpu           = "1"
             memory        = "512Mi"
             public        = false
@@ -324,7 +322,6 @@ variable "cr_names" {
             }
         }
         "cr-model-armor" = {
-            source_dir    = "../cloud_run/cr-model-armor"
             cpu           = "1"
             memory        = "512Mi"
             public        = false
