@@ -30,8 +30,8 @@ resource "google_service_account" "sa_cr" {
 data "archive_file" "cr_source" {
   for_each    = var.cr_names
   type        = "zip"
-  source_dir  = try(each.value.source_dir, "${path.module}/../../cloud_run/${each.key}/")
-  output_path = "${path.module}/../../.zips/${each.key}-cr.zip"
+  source_dir  = try(each.value.source_dir, "${path.root}/../cloud_run/${each.key}")
+  output_path = "${path.root}/.zips/${each.key}-cr.zip"
   excludes    = [".git", ".venv", "__pycache__", ".pytest_cache", ".zips", ".gemini", "node_modules"]
 }
 
@@ -54,7 +54,7 @@ resource "terraform_data" "build_image" {
   }
 
   provisioner "local-exec" {
-    command = "gcloud builds submit ${try(each.value.source_dir, "${path.module}/../../cloud_run/${each.key}/")} --project ${var.project_id} ${try(each.value.use_pack, true) ? "--pack image=${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:${data.archive_file.cr_source[each.key].output_md5}" : "--config=${try(each.value.source_dir, "${path.module}/../../cloud_run/${each.key}/")}/cloudbuild.yaml --substitutions=_IMAGE=${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:${data.archive_file.cr_source[each.key].output_md5},_TOKEN=$(gcloud auth print-access-token)"}"
+    command = "gcloud builds submit ${try(each.value.source_dir, "${path.root}/../cloud_run/${each.key}")} --project ${var.project_id} ${try(each.value.use_pack, true) ? "--pack image=${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:${data.archive_file.cr_source[each.key].output_md5}" : "--config=${try(each.value.source_dir, "${path.root}/../cloud_run/${each.key}")}/cloudbuild.yaml --substitutions=_IMAGE=${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${each.key}:${data.archive_file.cr_source[each.key].output_md5},_TOKEN=$(gcloud auth print-access-token)"}"
   }
 
   depends_on = [google_storage_bucket_object.zip]
@@ -168,15 +168,13 @@ resource "time_sleep" "wait_for_iam" {
 resource "google_cloud_run_v2_service" "cr" {
   for_each = var.cr_names
   
-  name     = try(each.value["name"], each.key)
-  location = var.region
-  project  = var.project_id
+  name                = try(each.value["name"], each.key)
+  location            = var.region
+  project             = var.project_id
+  deletion_protection = false
 
   template {
     service_account = google_service_account.sa_cr[each.key].email
-    annotations = {
-      "run.googleapis.com/cpu-throttling" = tostring(try(each.value.cpu_throttling, true))
-    }
     
     containers {
       # Points to the image built by Cloud Build, uniquely tagged with source code MD5
@@ -224,6 +222,7 @@ resource "google_cloud_run_v2_service" "cr" {
           cpu    = try(each.value.cpu, "1")
           memory = try(each.value.memory, "512Mi")
         }
+        cpu_idle = try(each.value.cpu_idle, try(each.value.cpu_throttling, true))
       }
     }
 

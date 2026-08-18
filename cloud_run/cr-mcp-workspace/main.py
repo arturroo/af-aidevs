@@ -21,6 +21,7 @@ from tools.rag.grep import register_grep
 from tools.rag.head import register_head
 from tools.rag.tail import register_tail
 from tools.rag.read_markdown_section import register_read_markdown_section
+from tools.rag.list_markdown_sections import register_list_markdown_sections
 
 # --- 1. CONFIGURATION ---
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -62,6 +63,7 @@ register_grep(mcp)
 register_head(mcp)
 register_tail(mcp)
 register_read_markdown_section(mcp)
+register_list_markdown_sections(mcp)
 
 async def session_id_middleware(request: Request, call_next):
     """Middleware to extract session_id from headers for auditability."""

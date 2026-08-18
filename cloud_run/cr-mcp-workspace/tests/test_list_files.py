@@ -14,7 +14,7 @@ test_root = Path(__file__).parent / "test_workspaces"
 config.WORKSPACE_MOUNT_ROOT = test_root
 
 from state import SESSION_MAPPING
-from tools.list_files import register_list_files
+from tools.filesystem.list_files import register_list_files
 
 # Mock Context
 class MockContext(Context):
@@ -56,8 +56,9 @@ async def test_list_files_missing_session(mcp):
     list_files_tool = mcp.tools["list_files"]
     ctx = MockContext(session_id="invalid_session")
     
-    with pytest.raises(PermissionError, match="Session expired or invalid"):
-        await list_files_tool(path=".", ctx=ctx)
+    response = await list_files_tool(reasoning="Test reasoning", path=".", ctx=ctx)
+    assert response.status == "error"
+    assert "Session expired or invalid" in response.message
 
 @pytest.mark.asyncio
 async def test_list_files_path_traversal(mcp):
@@ -72,9 +73,9 @@ async def test_list_files_path_traversal(mcp):
     list_files_tool = mcp.tools["list_files"]
     ctx = MockContext(session_id=session_id)
     
-    response = await list_files_tool(path="..", ctx=ctx)
+    response = await list_files_tool(reasoning="Test reasoning", path="..", ctx=ctx)
     assert response.status == "error"
-    assert "Path traversal attempt detected" in response.message
+    assert "path traversal" in response.message.lower()
 
 @pytest.mark.asyncio
 async def test_list_files_success_creates_dir(mcp):
@@ -89,7 +90,7 @@ async def test_list_files_success_creates_dir(mcp):
     list_files_tool = mcp.tools["list_files"]
     ctx = MockContext(session_id=session_id)
     
-    response = await list_files_tool(path=".", ctx=ctx)
+    response = await list_files_tool(reasoning="Test reasoning", path=".", ctx=ctx)
     assert response.status == "success"
     assert response.files == []
     
@@ -110,6 +111,6 @@ async def test_list_files_not_found(mcp):
     list_files_tool = mcp.tools["list_files"]
     ctx = MockContext(session_id=session_id)
     
-    response = await list_files_tool(path="does_not_exist", ctx=ctx)
+    response = await list_files_tool(reasoning="Test reasoning", path="does_not_exist", ctx=ctx)
     assert response.status == "error"
     assert "not found" in response.message

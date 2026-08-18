@@ -44,13 +44,32 @@ class AgentResponse(BaseModel):
     reasoning: str = Field(description="Audit trail of why this classification was made")
     answer: str = Field(description="The classification answer: DNG or NEU")
 
-# --- 2. LOCAL TOOLS ---
-@tool
+def extract_text_from_tool_response(response: Any) -> str:
+    """Safely extracts text string from LangChain / MCP tool responses."""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, list) and len(response) > 0:
+        first = response[0]
+        if isinstance(first, dict) and "text" in first:
+            return first["text"]
+        if hasattr(first, "text"):
+            return getattr(first, "text")
+        return str(first)
+    if isinstance(response, dict):
+        if "text" in response:
+            return response["text"]
+        if "content" in response:
+            return response["content"]
+        return json.dumps(response)
+    if hasattr(response, "content"):
+        return getattr(response, "content")
+    return str(response)
+
+# --- 2. LOCAL TOOLS & HELPERS ---
 def count_tokens(text: str) -> int:
     """Counts the number of tokens in the given text to prevent exceeding the 100-token limit."""
     import tiktoken
     try:
-        # standard GPT-4/Gemini-like base encoding for estimations
         encoding = tiktoken.get_encoding("cl100k_base")
     except Exception:
         encoding = tiktoken.get_encoding("cl100k_base")
@@ -110,13 +129,17 @@ class GoogleOIDCAuth(httpx.Auth):
         yield request
 
 # --- 4. PIPELINE ORCHESTRATION ---
-async def main():
-    parser = argparse.ArgumentParser(description="S02E01 Categorization Agent")
-    parser.add_argument("--backend", choices=["langchain", "adk"], default="langchain", help="Execution backend framework")
-    args = parser.parse_args()
+async def main(backend_override: str = None):
+    if backend_override:
+        backend = backend_override
+    else:
+        parser = argparse.ArgumentParser(description="S02E01 Categorization Agent")
+        parser.add_argument("--backend", choices=["langchain", "adk"], default=os.getenv("BACKEND") or "langchain", help="Execution backend framework")
+        args, _ = parser.parse_known_args()
+        backend = args.backend
 
-    session_id = f"s02e01_{args.backend}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    logger.info(f"🚀 Starting Categorization Agent. Session: {session_id} | Backend: {args.backend}")
+    session_id = f"s02e01_{backend}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    logger.info(f"🚀 Starting Categorization Agent. Session: {session_id} | Backend: {backend}")
 
     # Load system prompt and config
     config = load_system_prompt(BASE_DIR)
@@ -125,14 +148,14 @@ async def main():
 
     # Connect to MCP servers
     workspace_url = os.getenv("MCP_WORKSPACE_URL")
-    gateway_url = os.getenv("MCP_WEB_GATEWAY_URL")
-    verify_url = os.getenv("AIDEVS_VERIFY_URL")
-    csv_url = os.getenv("AIDEVS_CSV_URL")
+    gateway_url = os.getenv("MCP_WEB_GATEWAY_URL") or os.getenv("MCP_GATEWAY_URL")
+    verify_url = os.getenv("AIDEVS_VERIFY") or os.getenv("AIDEVS_VERIFY_URL") or os.getenv("AIDEVS_API_VERIFY")
     api_key = os.getenv("AIDEVS_API_KEY")
+    csv_url = os.getenv("AIDEVS_CSV_URL") or os.getenv("AIDEVS_API_CSV") or (f"https://hub.ag3nts.org/data/{api_key}/categorize.csv" if api_key else None)
 
     if not all([workspace_url, gateway_url, verify_url, csv_url, api_key]):
         logger.error("Missing required environment variables in .env")
-        return
+        return {"status": "error", "message": "Missing required environment variables"}
 
     logger.info("Connecting to MCP servers via MultiServerMCPClient...")
     mcp_client = MultiServerMCPClient(
@@ -159,18 +182,18 @@ async def main():
     mcp_tools = await mcp_client.get_tools()
     logger.info(f"Discovered {len(mcp_tools)} tools from MCP ecosystem.")
 
-    # Find the specific tool helper functions
-    fetch_web_tool = next((t for t in mcp_tools if "fetch_web_resource" in t.name), None)
-    post_web_tool = next((t for t in mcp_tools if "post_web_resource" in t.name), None)
-    read_file_tool = next((t for t in mcp_tools if "read_file" in t.name), None)
-    write_file_tool = next((t for t in mcp_tools if "write_file" in t.name), None)
+    # Match tools
+    fetch_web_tool = next((t for t in mcp_tools if t.name == "fetch_web_resource"), None)
+    post_web_tool = next((t for t in mcp_tools if t.name == "post_web_resource"), None)
+    read_file_tool = next((t for t in mcp_tools if t.name == "read_file"), None)
+    write_file_tool = next((t for t in mcp_tools if t.name == "write_file"), None)
 
     if not all([fetch_web_tool, post_web_tool, read_file_tool, write_file_tool]):
-        logger.error("Could not find all required MCP tools.")
-        return
+        logger.error("Could not discover all required MCP tools from servers.")
+        return {"status": "error", "message": "Missing required MCP tools"}
 
-    # Trigger verify reset first to ensure a clean slate
-    logger.info("Resetting verification session...")
+    # Trigger reset at start
+    logger.info("Triggering verify reset before run...")
     reset_payload = {
         "apikey": api_key,
         "task": "categorize",
@@ -178,7 +201,8 @@ async def main():
             "prompt": "reset"
         }
     }
-    await post_web_tool.ainvoke({"url": verify_url, "payload": reset_payload})
+    reset_res = await post_web_tool.ainvoke({"url": verify_url, "payload": reset_payload})
+    logger.info(f"Reset response from hub: {reset_res}")
 
     # Download CSV via Gateway
     logger.info("Downloading categorization CSV via Gateway...")
@@ -186,20 +210,24 @@ async def main():
 
     # Read CSV via Workspace Manager
     logger.info("Reading CSV content...")
-    csv_response = await read_file_tool.ainvoke({"file_path": "categorize.csv"})
+    csv_response = await read_file_tool.ainvoke({
+        "file_path": "categorize.csv",
+        "reasoning": "Loading context categorization CSV data to parse the items for classification."
+    })
 
     # Strictly parse as FileContentResponse structure
-    if isinstance(csv_response, str):
-        parsed = json.loads(csv_response)
-        csv_content = parsed["content"]
-        csv_hint = parsed.get("hint")
-    elif isinstance(csv_response, dict):
-        csv_content = csv_response["content"]
-        csv_hint = csv_response.get("hint")
-    else:
-        # Fallback to direct attribute lookup if parsed as an object/Pydantic model
-        csv_content = csv_response.content
-        csv_hint = getattr(csv_response, "hint", None)
+    raw_csv = extract_text_from_tool_response(csv_response)
+    try:
+        parsed_csv = json.loads(raw_csv)
+        if isinstance(parsed_csv, dict) and "content" in parsed_csv:
+            csv_content = parsed_csv["content"]
+            csv_hint = parsed_csv.get("hint")
+        else:
+            csv_content = raw_csv
+            csv_hint = None
+    except Exception:
+        csv_content = raw_csv
+        csv_hint = None
 
     if csv_hint:
         logger.info(f"Received hint from file read tool: {csv_hint}")
@@ -218,7 +246,7 @@ async def main():
     logger.info(f"Parsed {len(items)} items to classify.")
 
     # Set up trace triggers for Langfuse if adk
-    if args.backend == "adk":
+    if backend == "adk":
         from langfuse.decorators import observe, langfuse_context
         langfuse_context.update_current_trace(session_id=session_id, user_id="artur")
 
@@ -229,79 +257,68 @@ async def main():
     for index, item in enumerate(items):
         item_id = item["id"]
         description = item["description"]
-        logger.info(f"\n--- Item {index+1}/10: [ID {item_id}] {description} ---")
+        logger.info(f"Processing [{index+1}/{len(items)}] ID: {item_id} | Description: {description}")
 
-        # Local Reactor Bypass Rule check
-        is_reactor = any(word in description.lower() for word in ["reactor", "nuclear", "reaktor", "jądr", "nukle", "kaseta", "paliw", "fuel", "core"])
+        # Check for reactor bypass rule / exception (Reactor parts must always be classified as NEU)
+        desc_lower = description.lower()
+        is_reactor = any(word in desc_lower for word in ["reaktor", "reactor", "jądr", "nukle", "paliw", "fuel", "core"])
         
-        if is_reactor:
-            logger.info("⚠️ Reactor item detected! Bypassing LLM and forcing Neutral classification.")
-            prediction = "NEU"
-            # Formulate prompt specifically to force NEU in HUB
-            prompt_to_send = f"Classify as NEU. Output NEU. Item: {description}"
+        # Safety verification with Model Armor
+        is_safe = await model_armor.verify(description, policy, session_id)
+        if not is_safe:
+            logger.warning(f"Input flagged by Model Armor: {description}. Redacting to maintain safety.")
+            safe_desc = "[REDACTED_UNSAFE_DESCRIPTION]"
         else:
-            # Standard classification prompt
-            prompt_to_send = f"Classify as DNG/NEU. Weapons/threats -> DNG. Safe items -> NEU. Respond only DNG/NEU. Item: {description}"
+            safe_desc = description
 
-            # Validate input safety
-            is_safe = await model_armor.verify(prompt_to_send, policy, session_id)
-            if not is_safe:
-                logger.error("Input rejected by Model Armor.")
-                success = False
-                break
+        # Construct concise prompt optimized for Prompt Caching (static prefix first) and budget (<100 tokens)
+        base_prefix = "Classify as DNG (weapons/threats) or NEU (neutral/safe). Reactor/nuclear parts are ALWAYS NEU. Return only DNG or NEU. Item: "
+        prompt_to_send = f"{base_prefix}ID {item_id} - {safe_desc}"
 
-            # Count tokens via local tool
-            tok_count = adk_count_tokens(prompt_to_send)
-            logger.info(f"Estimated token count: {tok_count} (limit: 100)")
-            if tok_count > 100:
-                logger.warning("Token count exceeds 100! Truncating description.")
-                prompt_to_send = f"Classify DNG/NEU. Weapons/threats -> DNG. Safe items -> NEU. Item: {description[:30]}"
+        # Ensure token budget
+        token_count = count_tokens(prompt_to_send)
+        if token_count > 95:
+            logger.warning(f"Prompt exceeds token budget ({token_count} tokens). Truncating item description...")
+            truncated_len = max(20, len(safe_desc) - (token_count - 90) * 4)
+            prompt_to_send = f"{base_prefix}ID {item_id} - {safe_desc[:truncated_len]}"
 
-            # Call local LLM to get prediction (for auditing and verification)
-            if args.backend == "langchain":
-                google_project = os.getenv("GOOGLE_CLOUD_PROJECT")
-                llm = ChatGoogleGenerativeAI(
-                    model=config.model,
-                    temperature=config.temperature,
-                    project=google_project,
-                    location=config.location,
-                    vertexai=True
-                )
-                res = await llm.ainvoke([HumanMessage(content=prompt_to_send)])
-                prediction = res.content.strip()
-            else:
-                # ADK backend
-                root_agent = AdkAgent(
-                    name="categorize_agent",
-                    model=config.model,
-                    instruction=config.system_prompt,
-                    tools=[adk_count_tokens, adk_get_current_date]
-                )
-                session_service = InMemorySessionService()
-                runner = AdkRunner(
-                    app_name="s02e01_adk",
-                    agent=root_agent,
-                    session_service=session_service,
-                    auto_create_session=True
-                )
-                # Run the agent synchronously or extract output
-                new_msg = adk_types.Content(role="user", parts=[adk_types.Part.from_text(text=prompt_to_send)])
-                res_content = ""
-                async for event in runner.run_async(user_id="artur", session_id=session_id, new_message=new_msg):
-                    if event.content and event.content.parts:
-                        for part in event.content.parts:
-                            if part.text:
-                                res_content += part.text
-                prediction = res_content.strip()
+        if backend == "langchain":
+            google_project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("PROJECT_ID")
+            llm = ChatGoogleGenerativeAI(
+                model=config.model,
+                temperature=config.temperature,
+                project=google_project,
+                location=config.location,
+                vertexai=True,
+            )
+            res = await llm.ainvoke([HumanMessage(content=prompt_to_send)])
+            prediction = extract_text_from_tool_response(res.content).strip()
+        else:
+            # ADK backend
+            root_agent = AdkAgent(
+                name="categorize_agent",
+                model=config.model,
+                instruction=config.system_prompt,
+                tools=[adk_count_tokens, adk_get_current_date]
+            )
+            session_service = InMemorySessionService()
+            runner = AdkRunner(
+                app_name="s02e01_adk",
+                agent=root_agent,
+                session_service=session_service,
+                auto_create_session=True
+            )
+            new_msg = adk_types.Content(role="user", parts=[adk_types.Part.from_text(text=prompt_to_send)])
+            res_content = ""
+            async for event in runner.run_async(user_id="artur", session_id=session_id, new_message=new_msg):
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            res_content += part.text
+            prediction = res_content.strip()
 
-            # Clean output (ensure it's just DNG or NEU)
-            prediction = "DNG" if "DNG" in prediction.upper() else "NEU"
-
-            # Check output safety
-            is_output_safe = await model_armor.verify(prediction, policy, session_id)
-            if not is_output_safe:
-                logger.error("LLM output rejected by Model Armor.")
-                prediction = "NEU"
+        # Clean output (ensure it's just DNG or NEU)
+        prediction = "DNG" if "DNG" in prediction.upper() else "NEU"
 
         logger.info(f"Result for item {item_id}: {prediction}")
 
@@ -317,7 +334,8 @@ async def main():
         try:
             logger.info("Posting answer payload to verification API...")
             verify_res = await post_web_tool.ainvoke({"url": verify_url, "payload": answer_payload})
-            logger.info(f"Verify response: {verify_res}")
+            verify_text = extract_text_from_tool_response(verify_res)
+            logger.info(f"Verify response: {verify_text}")
             
             # Audit log to BigQuery
             audit_metadata = {
@@ -325,13 +343,13 @@ async def main():
                 "item_description": description,
                 "classification_result": prediction,
                 "prompt_sent": prompt_to_send,
-                "framework_used": args.backend,
-                "verify_response": verify_res
+                "framework_used": backend,
+                "verify_response": verify_text
             }
             await log_to_bq(session_id, "agent", f"Item {item_id} classified as {prediction}", metadata=audit_metadata)
             
-            if "FLG:" in str(verify_res):
-                flag = verify_res
+            if "FLG:" in verify_text:
+                flag = verify_text
                 logger.info(f"✨ SUCCESS! Flag retrieved: {flag}")
                 
         except Exception as e:
@@ -344,15 +362,63 @@ async def main():
         logger.info("Triggering verify reset on failure...")
         await post_web_tool.ainvoke({"url": verify_url, "payload": reset_payload})
         logger.error("Run completed with errors.")
+        return {"status": "error", "message": "Run completed with errors."}
     else:
         # Write success notes to Workspace Server
         logger.info("Writing run notes to Workspace Server...")
-        notes_content = f"Run complete on {datetime.now().isoformat()} using backend {args.backend}.\nResult: {flag}"
-        await write_file_tool.ainvoke({"file_path": "run_notes.txt", "content": notes_content})
+        notes_content = f"Run complete on {datetime.now().isoformat()} using backend {backend}.\nResult: {flag}"
+        await write_file_tool.ainvoke({
+            "file_path": "run_notes.txt",
+            "content": notes_content,
+            "reasoning": "Saving final task execution results and course verification flag"
+        })
         
-    if args.backend == "adk":
+    if backend == "adk":
         from langfuse.decorators import langfuse_context
         langfuse_context.flush()
+
+    return {"status": "success", "flag": flag}
+
+# --- 5. FASTAPI SERVICE FOR CLOUD RUN ---
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+app = FastAPI(title="S02E01 Context Categorizer Agent")
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    try:
+        response = await call_next(request)
+        logger.info(f"Response status: {response.status_code} for {request.method} {request.url.path}")
+        return response
+    except Exception as e:
+        logger.error(f"Error processing request {request.method} {request.url.path}: {str(e)}", exc_info=True)
+        return JSONResponse(status_code=500, content={"detail": "Internal Server Error", "error": str(e)})
+
+class TaskRequest(BaseModel):
+    backend: str = "langchain"
+
+@app.get("/")
+def read_root():
+    return {
+        "message": "Welcome to S02E01 Context Categorizer Agent Service",
+        "endpoints": {
+            "GET /": "Service info",
+            "GET /health": "Health check",
+            "POST /run": "Run the agent with specified backend (json payload: {'backend': 'langchain' | 'adk'})"
+        }
+    }
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+@app.post("/run")
+async def run_task(req: TaskRequest):
+    logger.info(f"Starting agent with backend: {req.backend}")
+    result = await main(backend_override=req.backend)
+    return {"status": "success", "backend": req.backend, "result": result}
 
 if __name__ == "__main__":
     asyncio.run(main())

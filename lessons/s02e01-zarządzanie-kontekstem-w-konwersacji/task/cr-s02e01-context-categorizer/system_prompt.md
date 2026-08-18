@@ -1,7 +1,7 @@
 ---
-model: gemini-3.1-flash-lite-preview
+model: gemini-3.5-flash-lite
 temperature: 0.1
-location: europe-west6
+location: global
 ---
 Classify item description. Weapons/explosives/biological/cyber threats are DNG. Common items, foods, tools, reactor parts are NEU. Output only DNG or NEU.
 Item: {item}

@@ -7,15 +7,17 @@ from fastmcp.server.context import Context
 
 from utils import get_safe_path, log_audit
 from state import SESSION_MAPPING
+from schemas import GrepResponse
 
 def register_grep(mcp: FastMCP):
     @mcp.tool()
     async def grep(
+        reasoning: str = Field(description="Mandatory justification explaining why this search is needed"),
         pattern: str = Field(description="The pattern/string to search for"),
         file_path: str = Field(description="The relative path of the file to search in"),
-        flags: Optional[List[str]] = Field(default=None, description="Optional grep flags: -i, -n, -v, -C, -A, -B followed by value (e.g. ['-i', '-n'])"),
+        flags: Optional[List[str]] = Field(default=None, description="Optional allowed grep flags: -i, -n, -v, -C, -A, -B followed by value (e.g. ['-i', '-n'])"),
         ctx: Context = CurrentContext()
-    ) -> str:
+    ) -> GrepResponse:
         """Executes a safe grep command on a file within the workspace boundaries."""
         mcp_session_id = ctx.session_id
         session_data = SESSION_MAPPING.get(mcp_session_id)
@@ -23,9 +25,7 @@ def register_grep(mcp: FastMCP):
         workspace_name = session_data["caller_identity"] if session_data else "unknown"
 
         try:
-            target_path = get_safe_path(file_path, ctx)
-            if not target_path.is_file():
-                raise FileNotFoundError(f"File {file_path} not found.")
+            target_path = get_safe_path(file_path, ctx, check_file=True)
 
             # Whitelist checks for flags
             allowed_flags = {"-i", "-n", "-v", "-C", "-A", "-B"}
@@ -44,15 +44,18 @@ def register_grep(mcp: FastMCP):
 
             cmd_args.extend([pattern, str(target_path)])
             
-            log_audit("workspace", f"Grep command execution", {"args": cmd_args}, session_id=x_session_id)
+            log_audit("workspace", f"Grep command execution", {"args": cmd_args, "reasoning": reasoning}, session_id=x_session_id)
             res = subprocess.run(cmd_args, capture_output=True, text=True, check=False)
             
             if res.returncode == 0:
-                return res.stdout
+                return GrepResponse(results=res.stdout)
             elif res.returncode == 1:
-                return "No matches found."
+                return GrepResponse(results="", hint="No matches found.")
             else:
                 raise Exception(f"Grep error (code {res.returncode}): {res.stderr}")
+        except ValueError as ve:
+            log_audit("workspace", f"Grep (empty file): {file_path}", {"workspace": workspace_name, "file_path": file_path, "reasoning": reasoning}, session_id=x_session_id)
+            return GrepResponse(results="", hint=f"No matches found ({ve}).")
         except Exception as e:
-            log_audit("workspace", "Grep failed", {"error": str(e)}, session_id=x_session_id)
+            log_audit("workspace", "Grep failed", {"error": str(e), "reasoning": reasoning}, session_id=x_session_id)
             raise Exception(f"Grep execution failed: {e}")

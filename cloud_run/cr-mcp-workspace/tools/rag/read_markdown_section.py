@@ -6,14 +6,16 @@ from markdown_it import MarkdownIt
 
 from utils import get_safe_path, log_audit
 from state import SESSION_MAPPING
+from schemas import ReadMarkdownSectionResponse
 
 def register_read_markdown_section(mcp: FastMCP):
     @mcp.tool()
     async def read_markdown_section(
+        reasoning: str = Field(description="Mandatory justification explaining why this markdown section is being read"),
         file_path: str = Field(description="Relative path to the markdown file in the workspace"),
         header_title: str = Field(description="The heading title to search for (case-insensitive)"),
         ctx: Context = CurrentContext()
-    ) -> str:
+    ) -> ReadMarkdownSectionResponse:
         """Parses a markdown file via AST and returns the section under the specified header."""
         mcp_session_id = ctx.session_id
         session_data = SESSION_MAPPING.get(mcp_session_id)
@@ -21,10 +23,7 @@ def register_read_markdown_section(mcp: FastMCP):
         workspace_name = session_data["caller_identity"] if session_data else "unknown"
 
         try:
-            target_path = get_safe_path(file_path, ctx)
-            if not target_path.is_file():
-                raise FileNotFoundError(f"File {file_path} not found.")
-                
+            target_path = get_safe_path(file_path, ctx, check_file=True, max_size_bytes=5242880)
             content = target_path.read_text(encoding="utf-8")
             
             md = MarkdownIt()
@@ -45,7 +44,7 @@ def register_read_markdown_section(mcp: FastMCP):
                             break
                             
             if target_index == -1:
-                return f"Header '{header_title}' not found in the document."
+                return ReadMarkdownSectionResponse(content="", hint=f"Header '{header_title}' not found in the document.")
                 
             lines = content.splitlines()
             start_line = tokens[target_index].map[0] if tokens[target_index].map else 0
@@ -61,8 +60,11 @@ def register_read_markdown_section(mcp: FastMCP):
                             break
                             
             section_content = "\n".join(lines[start_line:end_line])
-            log_audit("workspace", f"Read markdown section: {header_title}", {"workspace": workspace_name, "file_path": file_path}, session_id=x_session_id)
-            return section_content
+            log_audit("workspace", f"Read markdown section: {header_title}", {"workspace": workspace_name, "file_path": file_path, "reasoning": reasoning}, session_id=x_session_id)
+            return ReadMarkdownSectionResponse(content=section_content)
+        except ValueError as ve:
+            log_audit("workspace", f"Read markdown section (empty): {file_path}", {"workspace": workspace_name, "file_path": file_path, "reasoning": reasoning}, session_id=x_session_id)
+            return ReadMarkdownSectionResponse(content="", hint=str(ve))
         except Exception as e:
-            log_audit("workspace", "Read markdown section failed", {"workspace": workspace_name, "file_path": file_path, "error": str(e)}, session_id=x_session_id)
+            log_audit("workspace", "Read markdown section failed", {"workspace": workspace_name, "file_path": file_path, "error": str(e), "reasoning": reasoning}, session_id=x_session_id)
             raise Exception(f"Failed to read markdown section: {e}")

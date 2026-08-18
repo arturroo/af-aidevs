@@ -2,7 +2,7 @@
 name = "cf-s01e03-mcp-server-api-compaction"
 version = "0.1.0"
 description = "MCP Tools Server for AI Proxy Agent"
-requires-python = "==3.12.11"
+requires-python = "==3.13.5"
 dependencies = [
     "fastmcp==3.2.4",
     "fastapi==0.136.1",

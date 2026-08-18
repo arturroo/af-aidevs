@@ -1,22 +1,19 @@
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import Field
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentContext
 from fastmcp.server.context import Context
 
 from utils import get_safe_path, log_audit
 from state import SESSION_MAPPING
-
-class WorkspaceResponse(BaseModel):
-    status: str = Field(description="Status operacji: 'success' lub 'error'")
-    files: Optional[List[Dict[str, Any]]] = Field(default=None, description="Lista plików i katalogów z metadanymi")
-    message: Optional[str] = Field(default=None, description="Komunikat o błędzie lub statusie")
-    hint: Optional[str] = Field(default=None, description="Podpowiedź dla agenta, co powinien zrobić")
+from schemas import ListFilesResponse
 
 def register_list_files(mcp: FastMCP):
     @mcp.tool()
-    async def list_files(path: str = Field(description="Directory path relative to your session workspace to list. Example: '.'"), 
-                         ctx: Context = CurrentContext()) -> WorkspaceResponse:
+    async def list_files(
+        reasoning: str = Field(description="Mandatory justification explaining why directory listing is needed"),
+        path: str = Field(default=".", description="Directory path relative to your session workspace to list. Example: '.'"),
+        ctx: Context = CurrentContext()
+    ) -> ListFilesResponse:
         """Lists files and directories in the agent's session workspace directory with metadata."""
         mcp_session_id = ctx.session_id
         session_data = SESSION_MAPPING.get(mcp_session_id)
@@ -24,15 +21,14 @@ def register_list_files(mcp: FastMCP):
         workspace_name = session_data["caller_identity"] if session_data else "unknown"
 
         try:
-            # Ensure root workspace exists first
             root_path = get_safe_path(".", ctx)
             root_path.mkdir(parents=True, exist_ok=True)
             
             target_path = get_safe_path(path, ctx)
             
             if not target_path.exists():
-                log_audit("workspace", f"List files in {path} - Result: Not Found", {"workspace": workspace_name, "path": path, "absolute_path": str(target_path)}, session_id=x_session_id)
-                return WorkspaceResponse(
+                log_audit("workspace", f"List files in {path} - Result: Not Found", {"workspace": workspace_name, "path": path, "absolute_path": str(target_path), "reasoning": reasoning}, session_id=x_session_id)
+                return ListFilesResponse(
                     status="error",
                     message=f"Directory '{path}' not found.",
                     hint="Check if the directory exists. Use '.' to see available files in the root directory."
@@ -50,19 +46,19 @@ def register_list_files(mcp: FastMCP):
                 except Exception:
                     continue
                     
-            log_audit("workspace", f"List files in {path}", {"workspace": workspace_name, "path": path, "count": len(files), "absolute_path": str(target_path)}, session_id=x_session_id)
-            return WorkspaceResponse(
+            log_audit("workspace", f"List files in {path}", {"workspace": workspace_name, "path": path, "count": len(files), "absolute_path": str(target_path), "reasoning": reasoning}, session_id=x_session_id)
+            return ListFilesResponse(
                 status="success",
                 files=files
             )
         except PermissionError as pe:
-            return WorkspaceResponse(
+            return ListFilesResponse(
                 status="error",
                 message=str(pe),
                 hint="You are confined to your workspace directory. You cannot use '..' to escape."
             )
         except Exception as e:
-            return WorkspaceResponse(
+            return ListFilesResponse(
                 status="error",
                 message=f"List files failed: {e}"
             )

@@ -111,16 +111,42 @@ async def post_web_resource(
     session_data["last_activity"] = time.time()
     
     try:
-        log_audit("web-gateway", "POST request", {"url": url, "payload_keys": list(payload.keys())}, session_id=x_session_id)
+        masked_payload = {k: ("***" if "key" in k.lower() else v) for k, v in payload.items()}
+        logger.info(f"POST {url} | Headers: {headers} | Payload: {masked_payload}")
+        log_audit("web-gateway", "POST request", {"url": url, "payload": masked_payload, "headers": headers}, session_id=x_session_id)
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, json=payload, headers=headers)
+            logger.info(f"Response from {url} -> Status: {response.status_code} | Headers: {dict(response.headers)}")
+            
+            if response.status_code >= 400:
+                logger.error(f"POST {url} failed with {response.status_code} -> Body: {response.text}")
+                log_audit("web-gateway", "POST request error", {
+                    "url": url,
+                    "status_code": response.status_code,
+                    "response_headers": dict(response.headers),
+                    "response_body": response.text
+                }, session_id=x_session_id)
+                
             response.raise_for_status()
             res_json = response.json()
+            logger.info(f"Response Body JSON: {res_json}")
             
-        log_audit("web-gateway", "POST request successful", {"url": url}, session_id=x_session_id)
+        log_audit("web-gateway", "POST request successful", {"url": url, "response": res_json}, session_id=x_session_id)
         return res_json
+    except httpx.HTTPStatusError as e:
+        error_details = f"HTTP {e.response.status_code}: {e.response.text}"
+        logger.error(f"POST request to {url} failed: {error_details}")
+        log_audit("web-gateway", "POST request failed", {
+            "url": url,
+            "error": error_details,
+            "status_code": e.response.status_code,
+            "response_body": e.response.text,
+            "response_headers": dict(e.response.headers)
+        }, session_id=x_session_id)
+        raise Exception(f"POST request failed: {error_details}")
     except Exception as e:
+        logger.error(f"POST request to {url} encountered exception: {e}")
         log_audit("web-gateway", "POST request failed", {"url": url, "error": str(e)}, session_id=x_session_id)
         raise Exception(f"POST request failed: {e}")
 
