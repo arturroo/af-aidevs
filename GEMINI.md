@@ -15,7 +15,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - **Markdown Files:** The primary notes file inside the directory should simply be named `lesson.md` or `notes.md` to avoid redundant paths (like `S01E01-title/S01E01-title.md`), though keeping the downloaded markdown name as-is (e.g., `s01e01-programowanie...md`) is also perfectly fine if downloaded directly from the course platform. All markdown files and documentation (including READMEs) MUST be created in English to optimize token usage for the LLM.
 - **BigQuery:** Always create tables for a particular lesson in a BigQuery dataset named after that lesson (e.g., dataset `s01e03`).
 - GCP standards: BigQuery (`bq`), Firestore (`fs`), Cloud Functions entry point is always `main()`.
-- LLM Default: We use **Gemini 3.1 Flash Lite Preview** (`gemini-3.1-flash-lite-preview`) on **Vertex AI** via the modern `google-genai` SDK. Default location is `GOOGLE_CLOUD_LOCATION=global`.
+- LLM Default: We use **Gemini 3 Flash Preview** (`gemini-3-flash-preview`) on **Vertex AI** via the modern `google-genai` SDK. Default location is `GOOGLE_CLOUD_LOCATION=global`.
   - Available models on Vertex AI: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/migrate
   - Model regional availability: https://docs.cloud.google.com/gemini-enterprise-agent-platform/resources/locations
 - Python package management: `uv` only. `pyproject.toml` only and must use precise library versions (no `^` operators) and dependencies should be sorted **alphabetically**.
@@ -74,14 +74,15 @@ To test a service locally that depends on the private `af_aidevs` package in Art
 
 ### Agentic Software Engineering Principles
 
-- **Contract-First Tool Design:** We prioritize defining the "Public API" (AI-facing schema) before writing the tool's logic.
+- **Contract-First Tool Design:** We prioritize defining the "Public API" (AI-facing schema) before writing the tool's logic. We align with Google's API Design Guide and Google API Improvement Proposals (AIPs at https://aip.dev). Specifically:
+    - **Method-Specific Responses:** Every tool method MUST have its own dedicated response Pydantic model (e.g. `ReadFileResponse`, `ListFilesResponse`) to ensure zero schema ambiguity, type safety, and optimal LLM performance by eliminating unused/nullable fields.
   - **Schemas:** All tool input/output structures must be defined in `schemas.py` using Pydantic models. This serves as the source of truth for the LLM.
     - **Pydantic Reserved Names:** Avoid using field names starting with `model_` in Pydantic models to prevent conflicts with Pydantic v2 internal methods, unless we are mapping an external API schema that we do not control and cannot easily alias.
     - **Explicit Metadata:** Every field in a Pydantic model MUST include a `Field()` definition with a clear `description` and a relevant `example`. These are treated as mandatory instructions for the LLM to ensure high accuracy and reduce hallucination. Additional validation constraints (e.g., `ge`, `le`, `min_length`) should be used whenever possible.
     - **Reasoning & Hints:** 
       - **Structured Output:** When forcing the model to generate a structured response (e.g., `with_structured_output`), a `reasoning` field is MANDATORY. This provides a clear audit trail and helps in understanding the model's decision-making process.
-      - **Tool Inputs:** Every tool input schema MUST include a `reasoning` field. This ensures the model justifies every action it takes, which is then captured in the audit logs.
-      - **Tool Hints:** An optional `hint` field can be added to tool responses to provide the model with "progressive disclosure" or specific instructions on what to focus on next.
+      - **Tool Inputs:** Every tool input schema MUST include a `reasoning` field (required). This ensures the model justifies every action it takes, which is then captured in the audit logs.
+      - **Tool Responses:** Every tool response schema MUST include a `hint` field (optional) to provide the model with progressive disclosure or specific instructions on what to focus on next.
     - **Design Pattern: AgentResponse:** All final agent communications should follow the `AgentResponse` schema (including `reasoning` and `answer` fields) to ensure a consistent and auditable interface.
     - **Design Pattern: system_prompt.md:** Always store system instructions in a `system_prompt.md` file with YAML frontmatter. This separates instructions from logic and allows for better prompt management.
       - **Format**: The file MUST start with YAML frontmatter delimited by `---`.

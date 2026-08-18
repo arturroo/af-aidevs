@@ -14,9 +14,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from state import SESSION_MAPPING, x_session_id_ctx
-from tools.list_files import register_list_files
-from tools.read_file import register_read_file
-from tools.write_file import register_write_file
+from tools.filesystem.read_file import register_read_file
+from tools.filesystem.write_file import register_write_file
+from tools.filesystem.list_files import register_list_files
+from tools.rag.grep import register_grep
+from tools.rag.head import register_head
+from tools.rag.tail import register_tail
+from tools.rag.read_markdown_section import register_read_markdown_section
+from tools.rag.list_markdown_sections import register_list_markdown_sections
 
 # --- 1. CONFIGURATION ---
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -51,9 +56,14 @@ class WorkspaceManager(FastMCP):
 mcp = WorkspaceManager("Workspace-Manager")
 
 # --- 4. TOOLS REGISTRATION ---
-register_list_files(mcp)
 register_read_file(mcp)
 register_write_file(mcp)
+register_list_files(mcp)
+register_grep(mcp)
+register_head(mcp)
+register_tail(mcp)
+register_read_markdown_section(mcp)
+register_list_markdown_sections(mcp)
 
 async def session_id_middleware(request: Request, call_next):
     """Middleware to extract session_id from headers for auditability."""

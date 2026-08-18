@@ -60,6 +60,9 @@ variable "datasets" {
         "s01e05" = {
             description = "Dataset for S01E05 autonomous agent tasks"
         }
+        "s02e01" = {
+            description = "Dataset for S02E01 context categorization agent tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -215,7 +218,7 @@ variable "cf_names" {
 }
 
 variable "cr_names" {
-    description = "Google Cloud Run services (v2 only). Supports: source_dir, memory, cpu, env, public, max_instances"
+    description = "Google Cloud Run services (v2 only). Supports: source_dir, memory, cpu, cpu_idle, env, public, max_instances"
     default = {
         # "cr-s01e03-agent" = {
         #     source_dir    = "./lessons/s01e03-projektowanie-api/task/gcp/cr-xy"
@@ -238,7 +241,7 @@ variable "cr_names" {
             cpu           = "1"
             memory       = "512Mi"
             public       = false # it should be private and in agent should use google.auth.transport.requests library to generate OIDC token for Cloud Run authentication
-            cpu_throttling = true
+            cpu_idle       = true
             max_instances = 1
             concurrency   = 10
             session_affinity = true
@@ -260,7 +263,7 @@ variable "cr_names" {
             cpu           = "1"
             memory        = "512Mi"
             public        = false
-            cpu_throttling = true
+            cpu_idle       = true
             max_instances = 1
             env           = {
                 BACKEND = "langchain"
@@ -279,11 +282,10 @@ variable "cr_names" {
             }
         }
         "cr-mcp-workspace" = {
-            source_dir    = "../cloud_run/cr-mcp-workspace"
             cpu           = "1"
             memory        = "512Mi"
             public        = false
-            cpu_throttling = true
+            cpu_idle       = true
             max_instances = 1
             concurrency   = 80
             env           = {
@@ -300,12 +302,33 @@ variable "cr_names" {
                 }
             }
         }
-        "cr-model-armor" = {
-            source_dir    = "../cloud_run/cr-model-armor"
+        "cr-mcp-web-gateway" = {
             cpu           = "1"
             memory        = "512Mi"
             public        = false
-            cpu_throttling = true
+            cpu_idle       = true
+            max_instances = 1
+            concurrency   = 80
+            env           = {
+                LOG_LEVEL = "DEBUG"
+                WORKSPACE_MOUNT_ROOT = "/mnt/workspaces"
+            }
+            bucket_roles = {
+                "af-aidevs-workspaces" = ["roles/storage.objectAdmin"]
+            }
+            gcs_volumes = {
+                "workspaces" = {
+                    bucket     = "af-aidevs-workspaces"
+                    mount_path = "/mnt/workspaces"
+                    read_only  = false
+                }
+            }
+        }
+        "cr-model-armor" = {
+            cpu           = "1"
+            memory        = "512Mi"
+            public        = false
+            cpu_idle       = true
             max_instances = 1
             concurrency   = 80
             use_pack      = false
@@ -319,7 +342,7 @@ variable "cr_names" {
             cpu           = "1"
             memory        = "512Mi"
             public        = false
-            cpu_throttling = true
+            cpu_idle       = true
             max_instances = 1
             concurrency   = 80
             use_pack      = false
@@ -346,6 +369,42 @@ variable "cr_names" {
                 MCP_WORKSPACE_URL = "MCP_WORKSPACE_URL"
                 AIDEVS_API_KEY    = "AIDEVS_API_KEY"
                 AIDEVS_VERIFY     = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s02e01-agent" = {
+            source_dir    = "../lessons/s02e01-zarządzanie-kontekstem-w-konwersacji/task/cr-s02e01-context-categorizer"
+            cpu           = "1"
+            memory        = "512Mi"
+            public        = false
+            cpu_idle       = true
+            max_instances = 1
+            concurrency   = 80
+            use_pack      = false
+            env           = {
+                BACKEND = "langchain"
+                BQ_AUDIT_TABLE = "af-aidevs.s02e01.audit"
+                LANGSMITH_TRACING = "true"
+                LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s02e01" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-mcp-workspace"   = ["roles/run.invoker"]
+                "cr-mcp-web-gateway" = ["roles/run.invoker"]
+                "cr-model-armor"     = ["roles/run.invoker"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
+                MODEL_ARMOR_URL     = "MODEL_ARMOR_URL"
+                MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
+                MCP_WEB_GATEWAY_URL = "MCP_WEB_GATEWAY_URL"
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
             }
         }
     }
