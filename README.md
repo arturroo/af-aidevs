@@ -34,60 +34,62 @@ flowchart TB
         CLI["💻 Task Runner / CLI Client<br/>s02e01 Session Runner"]:::clientTier
     end
 
-    %% 2. AGENT RUNTIME TIER
-    subgraph TIER_AGENT ["2. Agent Runtime Core (Cloud Run)"]
+    %% 2. AGENT RUNTIME HARNESS (Cloud Run)
+    subgraph TIER_AGENT ["2. Agent Runtime Harness: cr-s02e01-agent (Cloud Run)"]
         direction TB
-        AGENT["🤖 cr-s02e01-agent<br/>• LangChain 1.2.15 create_agent<br/>• Google GenAI SDK / ADK Engine"]:::agentTier
+        AGENT_CORE["🤖 Agent Engine (LangChain 1.2.15 / Google ADK)"]:::agentTier
+        AGENT_IF{"⚡ Harness Decision:<br/>if model_armor.is_safe:"}:::decisionTier
+        AGENT_CORE --> AGENT_IF
+    end
+    class TIER_AGENT agentTier;
+
+    %% 3. SECURITY INSPECTION SERVICE (Cloud Run)
+    subgraph TIER_GATE ["3. Security Guardrail Service (Cloud Run)"]
+        MA["🛡️ cr-model-armor (PEP)<br/>• Prompt Injection Scanner<br/>• Content Safety Inspector"]:::gateTier
     end
 
-    %% 3. MODEL ARMOR GATE TIER
-    subgraph TIER_GATE ["3. Security Inspection Gate (Cloud Run)"]
-        direction TB
-        MA["🛡️ cr-model-armor (PEP)<br/>• Prompt Injection Scanner<br/>• Payload Sanitizer"]:::gateTier
-        DECISION{"⚡ Gate Decision:<br/>is_safe == True?"}:::decisionTier
-        MA --> DECISION
-    end
-
-    %% 4. MCP TOOL HUB TIER
+    %% 4. MCP TOOL HUB TIER (Cloud Run)
     subgraph TIER_MCP ["4. Standardized Tool Hub (FastMCP on Cloud Run)"]
         direction TB
         MCP_WS["🗄️ cr-mcp-workspace<br/>• Session Filesystem read/write/list<br/>• Chunking RAG markdown/grep/head/tail"]:::mcpTier
-        MCP_WEB["🌐 cr-mcp-web-gateway<br/>• Egress HTTP Fetcher<br/>• Content Sanitizer"]:::mcpTier
+        MCP_WEB["🌐 cr-mcp-web-gateway<br/>• Generic Web Fetch & Sanitizer"]:::mcpTier
     end
 
-    %% 5. MANAGED CLOUD SERVICES
+    %% 5. MANAGED CLOUD PLATFORM & AI (GCP)
     subgraph TIER_GCP ["5. Managed Cloud Services (GCP)"]
         VAI[("🧠 Vertex AI Model Garden<br/>Gemini 3 Flash Preview<br/>europe-west6 / global")]:::paasTier
-        GCS[("📦 Cloud Storage GCS<br/>Session Workspaces & Terraform State")]:::paasTier
+        GCS[("📦 Cloud Storage GCS<br/>Session Workspaces & State")]:::paasTier
         BQ[("📊 BigQuery Data Lake<br/>audit_log Tables & Analytics Views")]:::paasTier
         IAM[("🔑 Cloud IAM & Secrets<br/>Service Accounts & Secret Manager")]:::paasTier
     end
 
-    %% 6. EXTERNAL EGRESS & TELEMETRY
-    subgraph TIER_EXT ["6. External Egress and Observability"]
+    %% 6. EXTERNAL EGRESS & OBSERVABILITY
+    subgraph TIER_EXT ["6. External Targets and Observability"]
+        AIDEVS_API["🚀 AI_Devs Course Platform API<br/>Task Verification & Flags"]:::extTier
+        PUBLIC_NET["🌐 Public Web Pages & Data Sources"]:::extTier
         LS["📈 LangSmith<br/>Tracing & Evaluation"]:::obsTier
-        INET["☁️ Public Internet & Course APIs"]:::extTier
-        BLOCKED["🛑 Security Block & Log Incident"]:::gateTier
+        BLOCKED["🛑 Security Cutoff & Log Incident"]:::gateTier
     end
 
-    %% RUNTIME EXECUTION FLOW
-    CLI -->|"1. Run Task with X-Session-ID"| AGENT
-    AGENT <-->|"2. Reasoning & Prompt Inference"| VAI
-    AGENT -->|"3. Inspect Payload & Intent"| MA
+    %% RUNTIME WORKFLOW
+    CLI -->|"1. Start Task with X-Session-ID"| AGENT_CORE
+    AGENT_CORE <-->|"2. Inspect Prompt / Payload RPC"| MA
     
-    %% DECISION GATE BRANCHING
-    DECISION -->|"Safe: Open Channel & Execute"| MCP_WS
-    DECISION -->|"Safe: Open Channel & Execute"| MCP_WEB
-    DECISION -->|"Unsafe: Cutoff Channel"| BLOCKED
+    %% BRANCHING FROM AGENT HARNESS
+    AGENT_IF -->|"Safe: 3a. Model Inference"| VAI
+    AGENT_IF -->|"Safe: 3b. Workspace Tools"| MCP_WS
+    AGENT_IF -->|"Safe: 3c. Web Gateway Tools"| MCP_WEB
+    AGENT_IF -->|"Safe: 3d. Submit Final Answer (HTTPS)"| AIDEVS_API
+    AGENT_IF -->|"Unsafe: Cutoff Execution"| BLOCKED
 
-    %% TOOL BACKENDS
+    %% BACKEND STORAGE & OUTBOUND FETCH
     MCP_WS <-->|"Read & Write State"| GCS
-    MCP_WEB -->|"Outbound Fetch"| INET
+    MCP_WEB -->|"Fetch Target Pages"| PUBLIC_NET
 
     %% TELEMETRY & GOVERNANCE
-    IAM -.->|"OIDC Bearer Tokens"| AGENT
-    AGENT -.->|"Distributed Traces"| LS
-    AGENT -.->|"Lean JSON Logs to stdout"| BQ
+    IAM -.->|"OIDC Bearer Tokens"| AGENT_CORE
+    AGENT_CORE -.->|"Distributed Traces"| LS
+    AGENT_CORE -.->|"Lean JSON Logs to stdout"| BQ
     MCP_WS -.->|"Audit Events"| BQ
     BLOCKED -.->|"Security Violation Log"| BQ
 ```
