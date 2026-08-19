@@ -33,6 +33,7 @@ flowchart LR
         A2["Agent s01e02"]:::agentItem
         A3["Agent s02e01"]:::agentItem
         ADOTS["⋮"]:::agentItem
+        A1 ~~~ A2 ~~~ A3 ~~~ ADOTS
     end
     class AGENTS_BOX agentBox;
 
@@ -50,6 +51,7 @@ flowchart LR
         direction TB
         MCP_WS["🗄️ cr-mcp-workspace<br/>(File State & Doc RAG)"]:::mcpNode
         MCP_WEB["🌐 cr-mcp-web-gateway<br/>(Web Scraping & Fetch)"]:::mcpNode
+        MCP_WS ~~~ MCP_WEB
     end
     class MCP_BOX mcpNode;
 
