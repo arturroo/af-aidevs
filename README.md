@@ -13,78 +13,103 @@ A production-grade, enterprise-ready multi-agent AI ecosystem built for the [AI_
 
 ---
 
-## 🏛️ System Architecture
+## 🏛️ System Architecture (C4 Container Model)
 
-The ecosystem is engineered as a strictly decoupled, linear execution pipeline featuring a **Zero-Trust Policy Enforcement Point (PEP)** protecting downstream tool services:
+The platform is designed as an enterprise **C4 Container-level architecture** featuring an active **Model Armor Decision Gate (Policy Enforcement Point)** governing tool execution:
 
 ```mermaid
-flowchart LR
-    %% Styles
-    classDef agentBox fill:#fef7e0,stroke:#f9ab00,stroke-width:2px,color:#b06000,font-weight:bold;
-    classDef agentItem fill:#ffffff,stroke:#f9ab00,stroke-width:1px,color:#202124;
-    classDef gateBox fill:#fce8e6,stroke:#d93025,stroke-width:2px,color:#a50e0e,font-weight:bold;
-    classDef mcpNode fill:#e6f4ea,stroke:#1e8e3e,stroke-width:2px,color:#0d652d,font-weight:bold;
-    classDef cloudNode fill:#f1f3f4,stroke:#5f6368,stroke-width:2px,stroke-dasharray: 4 4,color:#202124,font-weight:bold;
+flowchart TB
+    %% Enterprise Styling
+    classDef clientTier fill:#E8F0FE,stroke:#1A73E8,stroke-width:2px,color:#174EA6,font-weight:bold;
+    classDef agentTier fill:#FEF7E0,stroke:#F9AB00,stroke-width:2px,color:#B06000,font-weight:bold;
+    classDef gateTier fill:#FCE8E6,stroke:#D93025,stroke-width:2px,color:#A50E0E,font-weight:bold;
+    classDef decisionTier fill:#FFF9C4,stroke:#FBC02D,stroke-width:2px,color:#F57F17,font-weight:bold;
+    classDef mcpTier fill:#E6F4EA,stroke:#1E8E3E,stroke-width:2px,color:#0D652D,font-weight:bold;
+    classDef paasTier fill:#F3E8FD,stroke:#8430CE,stroke-width:2px,color:#681DA8,font-weight:bold;
+    classDef obsTier fill:#E0F2F1,stroke:#00796B,stroke-width:2px,color:#004D40,font-weight:bold;
+    classDef extTier fill:#F1F3F4,stroke:#5F6368,stroke-width:2px,stroke-dasharray: 4 4,color:#202124,font-weight:bold;
 
-    %% 1. Lessons Agents (Vertical Stack) - Origin / Source
-    subgraph AGENTS_BOX ["1. Lessons Agents (LangChain & ADK)"]
-        direction TB
-        A1["Agent s01e01"]:::agentItem
-        A2["Agent s01e02"]:::agentItem
-        A3["Agent s02e01"]:::agentItem
-        ADOTS["⋮"]:::agentItem
-        A1 ~~~ A2 ~~~ A3 ~~~ ADOTS
+    %% 1. INGRESS TIER
+    subgraph TIER_CLIENT ["1. Ingress & Triggers (Client Tier)"]
+        CLI["💻 Task Runner / CLI Client<br/>(s02e01 Session Runner)"]:::clientTier
     end
-    class AGENTS_BOX agentBox;
 
-    %% 2. Zero-Trust Policy Enforcement Point (PEP) - Gate
-    subgraph TRANSISTOR_GATE ["2. Inline Security Gateway: cr-model-armor"]
+    %% 2. AGENT RUNTIME TIER
+    subgraph TIER_AGENT ["2. Agent Runtime Core (Cloud Run)"]
         direction TB
-        GATE_CTRL["🛡️ Policy Enforcement Point (PEP)<br/>• Prompt Injection Filter<br/>• Content Safety & Moderation<br/>• Zero-Trust Policy Verification"]:::gateBox
-        CHANNEL["⚡ Policy Evaluation Channel: [Allow Conduction / Cutoff Threat]"]
-        GATE_CTRL -.->|Enforces Policy| CHANNEL
+        AGENT["🤖 cr-s02e01-agent<br/>• LangChain 1.2.15 (create_agent)<br/>• Google GenAI SDK / ADK Engine"]:::agentTier
     end
-    class TRANSISTOR_GATE gateBox;
 
-    %% 3. Common MCP Servers - Egress / Drain
-    subgraph MCP_BOX ["3. Common MCP Servers"]
+    %% 3. MODEL ARMOR GATE TIER
+    subgraph TIER_GATE ["3. Security Inspection Gate (Cloud Run)"]
         direction TB
-        MCP_WS["🗄️ cr-mcp-workspace<br/>(File State & Doc RAG)"]:::mcpNode
-        MCP_WEB["🌐 cr-mcp-web-gateway<br/>(Web Scraping & Fetch)"]:::mcpNode
-        MCP_WS ~~~ MCP_WEB
+        MA["🛡️ cr-model-armor (PEP)<br/>• Prompt Injection Scanner<br/>• Payload Sanitizer"]:::gateTier
+        DECISION{"⚡ Gate Decision:<br/>is_safe == True?"}:::decisionTier
+        MA --> DECISION
     end
-    class MCP_BOX mcpNode;
 
-    %% 4. Target Clouds
-    GCS["☁️ Google Cloud Storage<br/>(Session Files & State)"]:::cloudNode
-    INET["☁️ Public Internet<br/>(External Web & APIs)"]:::cloudNode
+    %% 4. MCP TOOL HUB TIER
+    subgraph TIER_MCP ["4. Standardized Tool Hub (FastMCP on Cloud Run)"]
+        direction TB
+        MCP_WS["🗄️ cr-mcp-workspace<br/>• Session Filesystem (read/write/list)<br/>• Chunking RAG (markdown/grep/head/tail)"]:::mcpTier
+        MCP_WEB["🌐 cr-mcp-web-gateway<br/>• Egress HTTP Fetcher<br/>• Content Sanitizer"]:::mcpTier
+    end
 
-    %% Left-to-Right Linear Flow
-    AGENTS_BOX -->|"[Ingress Leg] Emitted Tool Requests"| CHANNEL
-    CHANNEL ==>|"[Egress Leg] Verified Safe Operations"| MCP_WS
-    CHANNEL ==>|"[Egress Leg] Verified Safe Operations"| MCP_WEB
-    MCP_WS -->|Persist Workspaces| GCS
+    %% 5. MANAGED CLOUD SERVICES
+    subgraph TIER_GCP ["5. Managed Cloud Services (GCP)"]
+        VAI[("🧠 Vertex AI Model Garden<br/>Gemini 3 Flash Preview<br/>(europe-west6 / global)")]:::paasTier
+        GCS[("📦 Cloud Storage (GCS)<br/>• Session Workspaces<br/>• Terraform State")]:::paasTier
+        BQ[("📊 BigQuery Data Lake<br/>• audit_log Tables<br/>• Analytics ELT Views")]:::paasTier
+        IAM[("🔑 Cloud IAM & Secrets<br/>• Service Accounts<br/>• Secret Manager")]:::paasTier
+    end
+
+    %% 6. EXTERNAL EGRESS & TELEMETRY
+    subgraph TIER_EXT ["6. External Egress & Observability"]
+        LS["📈 LangSmith<br/>(Tracing & Evaluation)"]:::obsTier
+        INET(["☁️ Public Internet & Course APIs"]):::extTier
+        BLOCKED["🛑 Security Block & Log Incident"]:::gateTier
+    end
+
+    %% RUNTIME EXECUTION FLOW
+    CLI -->|1. Run Task with X-Session-ID| AGENT
+    AGENT <-->|2. Reasoning & Prompt Inference| VAI
+    AGENT -->|3. Inspect Payload / Tool Intent| MA
+    
+    %% DECISION GATE BRANCHING (The "If" Condition)
+    DECISION -->|✅ Safe: Open Channel / Execute| MCP_WS
+    DECISION -->|✅ Safe: Open Channel / Execute| MCP_WEB
+    DECISION -->|❌ Unsafe: Cutoff Channel| BLOCKED
+
+    %% TOOL BACKENDS
+    MCP_WS <-->|Read / Write State| GCS
     MCP_WEB -->|Outbound Fetch| INET
+
+    %% TELEMETRY & GOVERNANCE
+    IAM -.->|OIDC Bearer Tokens| AGENT
+    AGENT -.->|Distributed Traces| LS
+    AGENT -.->|Lean JSON Logs (stdout)| BQ
+    MCP_WS -.->|Audit Events| BQ
+    BLOCKED -.->|Security Violation Log| BQ
 ```
 
 ---
 
-### 🛡️ Zero-Trust Security Gateway & Mental Model
+### 🛡️ The Model Armor "Gate" Logic
 
-To guarantee end-to-end security governance between autonomous LLM reasoning and cloud execution, the platform implements an inline **Policy Enforcement Point (PEP)** aligned with NIST SP 800-207 Zero Trust standards.
+The security architecture operates as an active **runtime gate** controlling agent-tool interactions:
 
 > [!TIP]
-> **🔌 Electronics Mental Model (FET Circuit Analogy):**  
-> For engineers with a hardware or electronics background, this architecture mirrors a **Field-Effect Transistor (FET)**:
-> - **Source ($S$)** $\rightarrow$ **Lessons Agents**: Generates and emits the flow of intent and raw tool calls.
-> - **Gate ($G$)** $\rightarrow$ **Model Armor (`cr-model-armor`)**: Applied control potential that continuously inspects payloads; safe inputs open the channel for conduction, while prompt injection threats immediately cut off conduction.
-> - **Drain ($D$)** $\rightarrow$ **Common MCP Servers**: The load destination where verified, safe operations execute and sink into cloud storage or external networks.
+> **🔌 Electronics Mental Model (FET Gate Control):**  
+> Just like the **Gate ($G$)** in a Field-Effect Transistor controls whether current can conduct between **Source ($S$)** and **Drain ($D$)**:
+> - **Source ($S$)** $\rightarrow$ **`cr-s02e01-agent`**: Emits raw thoughts and requested tool calls.
+> - **Gate ($G$)** $\rightarrow$ **`cr-model-armor`**: Measures threat potential. If `is_safe == True`, it applies positive potential to allow execution. If malicious prompt injection is detected, it cuts off the channel immediately.
+> - **Drain ($D$)** $\rightarrow$ **MCP Servers (`cr-mcp-workspace`, `cr-mcp-web-gateway`)**: Target load executing only verified, safe operations into Google Cloud Storage and external networks.
 
-| Pipeline Stage | NIST / Enterprise Standard Role | Role & Conduction Logic |
+| Pipeline Stage | Component | Enterprise Architecture Role |
 | :--- | :--- | :--- |
-| **Origin (Source)** | **Agent Reasoning Core** | Emits intent, reasoning chains, raw prompts, and desired tool invocations. |
-| **Security Gate (PEP)** | **Inline LLM Security Proxy (`cr-model-armor`)** | Real-time security gatekeeper. Inspects payloads for prompt injections, data leakage, and malicious instructions. Grants execution access only when verified safe. |
-| **Egress (Drain)** | **Standardized MCP Tool Execution Layer** | The shared execution layer where verified, safe calls drain into concrete backend operations (`cr-mcp-workspace`, `cr-mcp-web-gateway`). |
+| **Origin (Source)** | **`cr-s02e01-agent`** | Orchestrates reasoning, evaluates context, and formulates candidate tool invocations. |
+| **Security Gate (PEP)** | **`cr-model-armor`** | Evaluates payloads before execution. Emits a binary decision (`safe` vs. `unsafe`) controlling agent execution branches. |
+| **Egress (Drain)** | **Common MCP Servers** | Deployed FastMCP services executing authorized filesystem, RAG, and web actions. |
 
 ---
 
