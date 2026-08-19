@@ -78,13 +78,13 @@ flowchart TB
     %% BRANCHING FROM AGENT HARNESS
     AGENT_IF -->|"Safe: 3a. Model Inference"| VAI
     AGENT_IF -->|"Safe: 3b. Workspace Tools"| MCP_WS
-    AGENT_IF -->|"Safe: 3c. Web Gateway Tools"| MCP_WEB
-    AGENT_IF -->|"Safe: 3d. Submit Final Answer (HTTPS)"| AIDEVS_API
+    AGENT_IF -->|"Safe: 3c. Egress Tools (fetch / post)"| MCP_WEB
     AGENT_IF -->|"Unsafe: Cutoff Execution"| BLOCKED
 
-    %% BACKEND STORAGE & OUTBOUND FETCH
+    %% BACKEND STORAGE & OUTBOUND EGRESS
     MCP_WS <-->|"Read & Write State"| GCS
-    MCP_WEB -->|"Fetch Target Pages"| PUBLIC_NET
+    MCP_WEB -->|"Outbound Answers & Verification"| AIDEVS_API
+    MCP_WEB -->|"Fetch Target Web Pages"| PUBLIC_NET
 
     %% TELEMETRY & GOVERNANCE
     IAM -.->|"OIDC Bearer Tokens"| AGENT_CORE
