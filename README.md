@@ -30,14 +30,14 @@ flowchart TB
     classDef extTier fill:#F1F3F4,stroke:#5F6368,stroke-width:2px,stroke-dasharray: 4 4,color:#202124,font-weight:bold;
 
     %% 1. INGRESS TIER
-    subgraph TIER_CLIENT ["1. Ingress & Triggers (Client Tier)"]
-        CLI["💻 Task Runner / CLI Client<br/>(s02e01 Session Runner)"]:::clientTier
+    subgraph TIER_CLIENT ["1. Ingress and Triggers (Client Tier)"]
+        CLI["💻 Task Runner / CLI Client<br/>s02e01 Session Runner"]:::clientTier
     end
 
     %% 2. AGENT RUNTIME TIER
     subgraph TIER_AGENT ["2. Agent Runtime Core (Cloud Run)"]
         direction TB
-        AGENT["🤖 cr-s02e01-agent<br/>• LangChain 1.2.15 (create_agent)<br/>• Google GenAI SDK / ADK Engine"]:::agentTier
+        AGENT["🤖 cr-s02e01-agent<br/>• LangChain 1.2.15 create_agent<br/>• Google GenAI SDK / ADK Engine"]:::agentTier
     end
 
     %% 3. MODEL ARMOR GATE TIER
@@ -51,45 +51,45 @@ flowchart TB
     %% 4. MCP TOOL HUB TIER
     subgraph TIER_MCP ["4. Standardized Tool Hub (FastMCP on Cloud Run)"]
         direction TB
-        MCP_WS["🗄️ cr-mcp-workspace<br/>• Session Filesystem (read/write/list)<br/>• Chunking RAG (markdown/grep/head/tail)"]:::mcpTier
+        MCP_WS["🗄️ cr-mcp-workspace<br/>• Session Filesystem read/write/list<br/>• Chunking RAG markdown/grep/head/tail"]:::mcpTier
         MCP_WEB["🌐 cr-mcp-web-gateway<br/>• Egress HTTP Fetcher<br/>• Content Sanitizer"]:::mcpTier
     end
 
     %% 5. MANAGED CLOUD SERVICES
     subgraph TIER_GCP ["5. Managed Cloud Services (GCP)"]
-        VAI[("🧠 Vertex AI Model Garden<br/>Gemini 3 Flash Preview<br/>(europe-west6 / global)")]:::paasTier
-        GCS[("📦 Cloud Storage (GCS)<br/>• Session Workspaces<br/>• Terraform State")]:::paasTier
-        BQ[("📊 BigQuery Data Lake<br/>• audit_log Tables<br/>• Analytics ELT Views")]:::paasTier
-        IAM[("🔑 Cloud IAM & Secrets<br/>• Service Accounts<br/>• Secret Manager")]:::paasTier
+        VAI[("🧠 Vertex AI Model Garden<br/>Gemini 3 Flash Preview<br/>europe-west6 / global")]:::paasTier
+        GCS[("📦 Cloud Storage GCS<br/>Session Workspaces & Terraform State")]:::paasTier
+        BQ[("📊 BigQuery Data Lake<br/>audit_log Tables & Analytics Views")]:::paasTier
+        IAM[("🔑 Cloud IAM & Secrets<br/>Service Accounts & Secret Manager")]:::paasTier
     end
 
     %% 6. EXTERNAL EGRESS & TELEMETRY
-    subgraph TIER_EXT ["6. External Egress & Observability"]
-        LS["📈 LangSmith<br/>(Tracing & Evaluation)"]:::obsTier
-        INET(["☁️ Public Internet & Course APIs"]):::extTier
+    subgraph TIER_EXT ["6. External Egress and Observability"]
+        LS["📈 LangSmith<br/>Tracing & Evaluation"]:::obsTier
+        INET["☁️ Public Internet & Course APIs"]:::extTier
         BLOCKED["🛑 Security Block & Log Incident"]:::gateTier
     end
 
     %% RUNTIME EXECUTION FLOW
-    CLI -->|1. Run Task with X-Session-ID| AGENT
-    AGENT <-->|2. Reasoning & Prompt Inference| VAI
-    AGENT -->|3. Inspect Payload / Tool Intent| MA
+    CLI -->|"1. Run Task with X-Session-ID"| AGENT
+    AGENT <-->|"2. Reasoning & Prompt Inference"| VAI
+    AGENT -->|"3. Inspect Payload & Intent"| MA
     
-    %% DECISION GATE BRANCHING (The "If" Condition)
-    DECISION -->|✅ Safe: Open Channel / Execute| MCP_WS
-    DECISION -->|✅ Safe: Open Channel / Execute| MCP_WEB
-    DECISION -->|❌ Unsafe: Cutoff Channel| BLOCKED
+    %% DECISION GATE BRANCHING
+    DECISION -->|"Safe: Open Channel & Execute"| MCP_WS
+    DECISION -->|"Safe: Open Channel & Execute"| MCP_WEB
+    DECISION -->|"Unsafe: Cutoff Channel"| BLOCKED
 
     %% TOOL BACKENDS
-    MCP_WS <-->|Read / Write State| GCS
-    MCP_WEB -->|Outbound Fetch| INET
+    MCP_WS <-->|"Read & Write State"| GCS
+    MCP_WEB -->|"Outbound Fetch"| INET
 
     %% TELEMETRY & GOVERNANCE
-    IAM -.->|OIDC Bearer Tokens| AGENT
-    AGENT -.->|Distributed Traces| LS
-    AGENT -.->|Lean JSON Logs (stdout)| BQ
-    MCP_WS -.->|Audit Events| BQ
-    BLOCKED -.->|Security Violation Log| BQ
+    IAM -.->|"OIDC Bearer Tokens"| AGENT
+    AGENT -.->|"Distributed Traces"| LS
+    AGENT -.->|"Lean JSON Logs to stdout"| BQ
+    MCP_WS -.->|"Audit Events"| BQ
+    BLOCKED -.->|"Security Violation Log"| BQ
 ```
 
 ---
