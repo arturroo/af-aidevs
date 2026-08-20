@@ -49,7 +49,7 @@ The security architecture operates as an active **runtime gate** controlling age
 ### 2. Dual-Engine Agent Core
 - **Interchangeable Runtime**: Standardized architecture supporting two state-of-the-art backends:
   - **LangChain 1.2.15**: Structured orchestration using `create_agent` with dynamic runtime MCP tool discovery via `langchain-mcp-adapters`.
-  - **Google GenAI SDK / Vertex AI ADK**: High-performance, native SDK integration with Gemini 3 Flash Preview (`gemini-3-flash-preview` / `gemini-3.1-flash-lite-preview`).
+  - **Google GenAI SDK / Vertex AI ADK**: High-performance, native SDK integration with Gemini 3.5 & 3 Flash and Flash Lite models (`gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`).
 - **Externalized Prompt Engineering**: System instructions managed in `system_prompt.md` files featuring YAML frontmatter for metadata, temperature, and region configuration.
 - **Deterministic Temporal Context**: Dynamic `get_current_date()` tool calls preserve Vertex AI Prompt Context Caching rather than hardcoding timestamps in prompts.
 
