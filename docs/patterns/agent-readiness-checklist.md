@@ -4,6 +4,7 @@
 - **Approved by**: Artur Fejklowicz
 - **Date**: 2026-08-31
 - **Scope**: Platform-wide Agent Architecture, Security Governance & Deployment
+- **URL**: https://github.com/arturroo/af-aidevs/blob/main/docs/patterns/agent-readiness-checklist.md
 
 A standardized engineering checklist and decision framework to be evaluated before designing, granting access to, or deploying any AI Agent within the platform.
 
