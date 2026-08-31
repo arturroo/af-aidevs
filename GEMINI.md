@@ -74,6 +74,7 @@ To test a service locally that depends on the private `af_aidevs` package in Art
 
 ### Agentic Software Engineering Principles
 
+- **Pre-Flight Agent Readiness & Security Checklist:** Before developing or deploying any agent or granting it tool access, evaluate the mandatory [Pre-Flight Agent Readiness & Security Checklist](docs/patterns/agent-readiness-checklist.md) covering threat modeling (*Blast Radius*), rollback capability (*Disaster Recovery*), auditability, legal compliance (GDPR/AI Act), and the *Workflow vs. Agent* decision matrix.
 - **Contract-First Tool Design:** We prioritize defining the "Public API" (AI-facing schema) before writing the tool's logic. We align with Google's API Design Guide and Google API Improvement Proposals (AIPs at https://aip.dev). Specifically:
     - **Method-Specific Responses:** Every tool method MUST have its own dedicated response Pydantic model (e.g. `ReadFileResponse`, `ListFilesResponse`) to ensure zero schema ambiguity, type safety, and optimal LLM performance by eliminating unused/nullable fields.
   - **Schemas:** All tool input/output structures must be defined in `schemas.py` using Pydantic models. This serves as the source of truth for the LLM.
@@ -119,6 +120,15 @@ To test a service locally that depends on the private `af_aidevs` package in Art
         ```
       - **Package Versioning**: When modifying the `utils` package, always increment the version in `pyproject.toml` (e.g., from `0.1.0` to `0.1.1`) to avoid conflicts when publishing to Artifact Registry.
     - **Design Pattern: get_current_date():** To ensure optimal LLM prompt caching (Context Caching), do NOT hardcode the date in the system prompt. Instead, always provide a `get_current_date()` tool that the agent can call when temporal context is needed.
+    - **Design Pattern: run_notes.txt Execution Summary:** Whenever appropriate and sensible, task agents should write an execution summary and outcome report to `run_notes.txt` in their session workspace using the MCP `write_file` tool. This summary provides immediate human inspection and persistent auditability of task status, execution timestamp, framework/backend used, and retrieved course flags (e.g. `{FLG:...}`).
+    - **Design Pattern: Multi-Layered Workspace (OverlayFS / UnionFS):** To enforce Zero-Trust isolation and prevent asset duplication across sessions, workspace storage (`cr-mcp-workspace`) uses a dual-layer Virtual File System:
+      - **Lower Layer (Read-Only Shared):** `gs://af-aidevs-workspaces/shared/{lesson_id}/` holding static immutable blueprints, reference schematics, and common task fixtures.
+      - **Upper Layer (Read-Write Session):** `gs://af-aidevs-workspaces/{caller_identity}/{session_id}/` holding runtime ephemeral artifacts.
+      - **Resolution Rule:** File reads check the upper session layer first and fallback seamlessly to the lower shared layer. File writes strictly mutate the session layer. Client agents never receive direct GCS IAM permissions to copy raw bucket blobs.
+    - **Design Pattern: Standardized Session ID (Traceability & OverlayFS):** To ensure clear human auditability, straightforward BigQuery log filtering, and deterministic OverlayFS layer binding, all session IDs MUST follow the strict format:
+      `{lesson_id}_{backend}_{YYYYMMDD_HHMMSS}` using the `Europe/Zurich` timezone.
+      - **Implementation:** `f"{lesson_id}_{backend}_{datetime.now(ZoneInfo('Europe/Zurich')).strftime('%Y%m%d_%H%M%S')}"`
+      - **Example:** `s02e02_langchain_20260829_231500`
     - **Observability & Auditing:** 
       - Every interaction (thoughts, tool calls, results, and final answers) MUST be logged to an `audit` table in BigQuery for traceability and performance analysis.
       - **Traceability:** All service calls MUST include an `X-Session-ID` HTTP header. This header must be propagated across all internal service calls (e.g., from Agent to MCP or Model Armor) to ensure a complete trace can be reconstructed in BigQuery using the `session_id` field.

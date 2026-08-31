@@ -41,6 +41,7 @@ The security architecture operates as an active **runtime gate** controlling age
 ## 🚀 Core Architectural Pillars
 
 ### 1. Zero-Trust Security & Identity Governance
+- **Pre-Flight Agent Readiness & Security Checklist**: Strict pre-deployment governance framework ([agent-readiness-checklist.md](docs/patterns/agent-readiness-checklist.md)) enforcing threat modeling (*Blast Radius*), reversibility / disaster recovery, auditing, GDPR/AI Act compliance, and least-privilege scoping.
 - **Google Cloud OIDC Service-to-Service IAM**: Direct Cloud Run service invocation authenticated via OIDC identity tokens, cached dynamically through custom HTTPX authentication handlers.
 - **Role-Based Token Impersonation**: Fine-grained access using `roles/iam.serviceAccountTokenCreator` without persistent, static service account keys.
 - **Model Armor Firewall**: Dedicated microservice (`cr-model-armor`) serving as an active defense layer against direct and indirect prompt injection attacks.
@@ -76,6 +77,9 @@ af-aidevs/
 │   ├── cr-mcp-workspace/       # FastMCP filesystem & RAG service
 │   ├── cr-mcp-web-gateway/     # FastMCP web interaction gateway
 │   └── cr-model-armor/         # Prompt injection & safety inspection proxy
+├── docs/                       # Architecture diagrams, patterns & checklists
+│   ├── af-aidevs/              # Architecture diagrams & schematics
+│   └── patterns/               # Engineering checklists & design patterns
 ├── lessons/                    # Lesson tasks & agent implementations
 │   ├── s01e01-.../             # Lesson-specific agent workspaces
 │   ├── s01e02-.../
