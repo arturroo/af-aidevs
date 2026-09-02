@@ -38,6 +38,7 @@ To ensure solid software engineering principles and alignment before implementat
 - The `AIDEVS_API_KEY` secret itself must be stored in GCP Secret Manager for deployed services, and in a local `.env` file for local development only.
 - When writing documentation or PRDs, refer to endpoints as their env var name only. Example: use `$AIDEVS_API_VERIFY` — never paste the actual URL.
 - This rule exists to respect the course authors' intellectual property and prevent API endpoint leakage in public repositories.
+- **NEVER expose or commit course flags (`{FLG:...}`) publicly:** Course flags must NEVER appear in Git commit messages, public documentation, PR descriptions, or source code comments. Always redact or reference them abstractly (e.g. `{FLG:...}` or `[REDACTED_FLAG]`) when committing changes or writing shared notes to respect academic integrity and prevent answer leakage.
 - **Environment Variables Parsing:** Always use `os.getenv("VAR") or "default"` in Python instead of `os.environ.get("VAR", "default")`. This protects against accidentally exported empty strings from `.env` files overriding the defaults.
 - **LangSmith:** For simplicity, we use only one project in LangSmith across all services, referenced via the `LANGSMITH_PROJECT` environment variable.
 - **Model Armor:** Services using Model Armor for safety verification must have the `MODEL_ARMOR_URL` environment variable set. In GCP, this is retrieved from Secret Manager. Locally, it must be set in the `.env` file.
@@ -48,7 +49,9 @@ To ensure solid software engineering principles and alignment before implementat
 - **State:** Remote backend state (GCS) will be configured in `backend.tf`. Service accounts (`*.json`) must NEVER be committed.
 - **Naming:** All resources must be named in kebab-case, with a prefix indicating the resource type (e.g., `bq-` for BigQuery, `fs-` for Firestore, `cf-` for Cloud Functions) and following the lesson's s[season]e[episode] naming convention and short description of the resource. Example: `cf-s01e03-mcp-server`.
 - **Service Accounts:** We use a strict prefix-based naming convention for Service Accounts to lower cognitive load and improve traceability in logs: `sa-{resource_type_short}-{name}`. Example: `sa-cr-mcp-workspace` for a Cloud Run service. This allows for immediate identification of the resource type an identity belongs to. Max length is 30 characters.
-- **Secrets:** All secrets must be stored in Secret Manager or in a local file `.env` in particular task folder. Never commit `.env` files. Artur will fillsecrets or .env files, you just say with what values to fill them.
+- **Secrets:** All secrets must be stored in Secret Manager (production) or in local `.env` files (development). Never commit `.env` files.
+  - **Canonical Secret Names in Secret Manager:** Use strict UPPER_SNAKE_CASE: `AIDEVS_API_KEY`, `AIDEVS_VERIFY`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `MODEL_ARMOR_URL`, `MCP_WORKSPACE_URL`, `MCP_WEB_GATEWAY_URL`.
+  - **Resilient Fallbacks:** In Python code (`config.py`), always support fallback aliases (e.g. `os.getenv("AIDEVS_VERIFY") or os.getenv("AIDEVS_VERIFY_URL")`) to ensure seamless execution across local `.env` and Cloud Run Secret Manager bindings.
 - **Local Auth:** When running locally on WSL/Windows, always remember to `unset GOOGLE_APPLICATION_CREDENTIALS` (bash) or `$env:GOOGLE_APPLICATION_CREDENTIALS=$null` (powershell) to avoid conflicts with infrastructure service accounts.
 
 ### Local Testing with Private Packages
@@ -129,6 +132,9 @@ To test a service locally that depends on the private `af_aidevs` package in Art
       `{lesson_id}_{backend}_{YYYYMMDD_HHMMSS}` using the `Europe/Zurich` timezone.
       - **Implementation:** `f"{lesson_id}_{backend}_{datetime.now(ZoneInfo('Europe/Zurich')).strftime('%Y%m%d_%H%M%S')}"`
       - **Example:** `s02e02_langchain_20260829_231500`
+    - **Design Pattern: Real-Time Auditing (Zero-Latency Callbacks):** Never defer BigQuery auditing to a post-execution block after `solve()` finishes. Instead, hook directly into the LangChain/LangGraph execution lifecycle via an `AsyncCallbackHandler` (`on_llm_start`, `on_llm_end`, `on_tool_start`, `on_tool_end`, `on_tool_error`) passed via `config={"callbacks": [bq_callback]}` in `agent.ainvoke`. When inserting rows into BigQuery, always set `ignore_unknown_values=True` and provide dual-schema fields (`content`/`metadata` and `step_type`/`reasoning`/`payload`/`flag`) to ensure zero audit loss even if the container is preempted or hits a timeout.
+    - **Design Pattern: Graceful Tool Error Handling (`handle_tool_error = True`):** In LangChain 1.2.15 / LangGraph, unhandled `ToolException` errors (e.g., file not found, network blip) crash the execution graph by default. ALWAYS iterate over all tools and set `tool.handle_tool_error = True` before creating the agent. This converts exceptions into `ToolMessage` feedback, allowing the model to autonomously self-correct (e.g., creating a missing file instead of crashing).
+    - **Design Pattern: Hermetic Tool Signatures (Zero-Hallucination Parameters):** Do NOT expose internal service URLs, endpoints, or backend config as optional parameters in tool functions (e.g., `board_url: str = ""`). Models hallucinate passing incorrect URLs (e.g., passing a POST `/verify` URL into a GET inspection tool). Tool logic must resolve authoritative URLs internally from `config.py`.
     - **Observability & Auditing:** 
       - Every interaction (thoughts, tool calls, results, and final answers) MUST be logged to an `audit` table in BigQuery for traceability and performance analysis.
       - **Traceability:** All service calls MUST include an `X-Session-ID` HTTP header. This header must be propagated across all internal service calls (e.g., from Agent to MCP or Model Armor) to ensure a complete trace can be reconstructed in BigQuery using the `session_id` field.
@@ -138,8 +144,16 @@ To test a service locally that depends on the private `af_aidevs` package in Art
 
 ### Cloud Run Gold Standards
 To ensure consistent deployment and runtime behavior across all microservices:
-- **Entrypoint:** Every Python Cloud Run service MUST include a `Procfile` in its root directory with the following content:
-  `web: uvicorn main:app --host 0.0.0.0 --port $PORT`
+- **Agentic Workflow Request Timeout:** Multi-hop agentic loops (in-memory vision processing, MCP dynamic discovery, sequential tool iterations, BigQuery writes) require adequate execution headroom. Cloud Run services hosting autonomous agents MUST be configured with `timeout = "600s"` in Terraform.
+- **Service Account Length Limit:** GCP IAM enforces a strict maximum of 30 characters for Service Account IDs (`account_id`). When naming Cloud Run services in Terraform (`cr_names`), keep the suffix short so that `sa-cr-${name}` does not exceed 30 characters (service name $\le 24$ characters).
+- **Service Deployment Assets Checklist:** Every Python Cloud Run service directory MUST include these 5 essential files before deploying via Terraform:
+  1. **`Dockerfile`**: Based on `python:3.13-slim`, installs `uv`, accepts `ARG UV_INDEX_GAR_PASSWORD`, and runs `uv sync`.
+  2. **`cloudbuild.yaml`**: Standard build manifest passing `$_TOKEN` to `UV_INDEX_GAR_PASSWORD` for Artifact Registry access.
+  3. **`Procfile`**: `web: uvicorn main:app --host 0.0.0.0 --port $PORT`.
+  4. **`.dockerignore` & `.gcloudignore`**: Excluding `.venv/`, `__pycache__/`, `*.pyc`, `.git/`, `.env`.
+  5. **`main.py` Entrypoint**: Exposing a FastAPI `app` with `GET /health` and `POST /run` endpoints alongside CLI execution.
+- **Self-Contained Container Context (No Parent Directory Lookups):** Docker builds in Cloud Run are strictly confined to the service directory (`/app`). Code MUST NOT traverse to parent directories (`../`) to find assets. Any immutable schematics or seed fixtures must be located within the service directory or resolved via the OverlayFS shared layer (`gs://af-aidevs-workspaces/shared/{lesson_id}/`).
+- **Explicit Vertex AI IAM Mode:** When using `ChatGoogleGenerativeAI` or `google-genai` on Cloud Run without an API key, always pass `vertexai=True` and `project=...` to ensure authentication via Cloud IAM Service Account (`roles/aiplatform.user`) rather than consumer Gemini Developer API keys.
 - **Dependencies:** For web services (FastAPI/Uvicorn/FastMcp), always use these precise versions in `pyproject.toml` to ensure stability, if not specified otherwise:
   - `fastapi==0.136.1`
   - `fastmcp==3.2.4`

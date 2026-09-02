@@ -36,6 +36,16 @@ To interact with the server, the client MUST provide and manage two session head
 - These logs are picked up by a Cloud Logging Sink and routed to BigQuery dataset `ai_governance`, table `run_googleapis_com_stdout`.
 - Views `audit_v1` and `audit_v` are available to query these logs easily.
 
+### 5. Multi-Layered Virtual File System (OverlayFS / UnionFS)
+To enforce Zero-Trust isolation and eliminate asset duplication across sessions, the server implements a dual-layer Virtual File System:
+- **Lower Layer (Read-Only Shared Base):** `/workspace/shared/<lesson_id>/` holding static immutable blueprints, reference schematics, and common task fixtures.
+- **Upper Layer (Read-Write Ephemeral Session):** `/workspace/<caller_identity>/<x_session_id>/` holding runtime task artifacts.
+- **Authoritative Identity Binding:** The `<lesson_id>` is extracted authoritatively from the cryptographically verified Service Account identity in the Google IAM JWT token (e.g. `sa-cr-s02e02-...`), guaranteeing tamper-proof tenant isolation.
+- **Resolution Rules:**
+  - `read_file`: Checks the Upper Session Layer first; falls back seamlessly to the Lower Shared Layer if missing.
+  - `list_files`: Returns the union of files across Upper and Lower layers (Upper layer overrides collisions).
+  - `write_file`: Always writes exclusively to the Upper Session Layer, preserving shared asset immutability.
+
 ## How to use in Agents (Python Client Implementation)
 
 When building an agent in Python that connects to this MCP server, the recommended way is to use the `FastMCP` native client with `StreamableHttpTransport`. This abstracts away the complexity of handling the SSE stream and JSON-RPC protocol.

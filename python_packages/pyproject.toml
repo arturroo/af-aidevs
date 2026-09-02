@@ -1,14 +1,15 @@
 [project]
 name = "af-aidevs"
-version = "0.1.6"
+version = "0.2.1"
 description = "Shared Python packages for AI_Devs course"
 readme = "README.md"
 requires-python = "==3.13.5"
 dependencies = [
     "google-cloud-bigquery==3.41.0",
     "httpx==0.28.1",
-    "python-frontmatter==1.1.0",
+    "langchain-mcp-adapters==0.2.2",
     "pydantic==2.13.4",
+    "python-frontmatter==1.1.0",
 ]
 
 [build-system]

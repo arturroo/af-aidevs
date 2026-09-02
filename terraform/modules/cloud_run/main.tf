@@ -174,6 +174,7 @@ resource "google_cloud_run_v2_service" "cr" {
   deletion_protection = false
 
   template {
+    timeout         = try(each.value.timeout, "600s")
     service_account = google_service_account.sa_cr[each.key].email
     
     containers {

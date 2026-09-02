@@ -21,7 +21,7 @@ def register_read_file(mcp: FastMCP):
         workspace_name = session_data["caller_identity"] if session_data else "unknown"
 
         try:
-            target_path = get_safe_path(file_path, ctx, check_file=True, max_size_bytes=5242880)
+            target_path = get_safe_path(file_path, ctx, check_file=True, max_size_bytes=5242880, allow_shared_fallback=True)
             content = target_path.read_text(encoding="utf-8")
             log_audit("workspace", f"Read file: {file_path}", {"workspace": workspace_name, "file_path": file_path, "size": len(content), "absolute_path": str(target_path), "reasoning": reasoning}, session_id=x_session_id)
             return ReadFileResponse(content=content)

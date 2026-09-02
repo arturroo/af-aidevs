@@ -63,6 +63,9 @@ variable "datasets" {
         "s02e01" = {
             description = "Dataset for S02E01 context categorization agent tasks"
         }
+        "s02e02" = {
+            description = "Dataset for S02E02 electricity circuit solver tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -102,6 +105,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S01E05 autonomous agent"
             dataset_id  = "s01e05"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s02e02_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S02E02 electricity solver agent"
+            dataset_id  = "s02e02"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -401,6 +410,52 @@ variable "cr_names" {
                 LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
                 LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
                 MODEL_ARMOR_URL     = "MODEL_ARMOR_URL"
+                MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
+                MCP_WEB_GATEWAY_URL = "MCP_WEB_GATEWAY_URL"
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s02e02-electricity" = {
+            source_dir    = "../lessons/s02e02-zewnetrzny-kontekst-narzedzi-i-dokumentow/task/cr-s02e02-electricity"
+            cpu           = "1"
+            memory        = "512Mi"
+            public        = false
+            cpu_idle       = true
+            max_instances = 1
+            concurrency   = 80
+            timeout       = "600s"
+            use_pack      = false
+            env           = {
+                BACKEND = "langchain"
+                BQ_AUDIT_TABLE = "af-aidevs.s02e02.audit"
+                LANGSMITH_TRACING = "true"
+                LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
+                WORKSPACE_MOUNT_ROOT = "/mnt/workspaces"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s02e02" = ["roles/bigquery.dataEditor"]
+            }
+            bucket_roles = {
+                "af-aidevs-workspaces" = ["roles/storage.objectViewer"]
+            }
+            gcs_volumes = {
+                "workspaces" = {
+                    bucket     = "af-aidevs-workspaces"
+                    mount_path = "/mnt/workspaces"
+                    read_only  = true
+                }
+            }
+            cr_roles = {
+                "cr-mcp-workspace"   = ["roles/run.invoker"]
+                "cr-mcp-web-gateway" = ["roles/run.invoker"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
                 MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
                 MCP_WEB_GATEWAY_URL = "MCP_WEB_GATEWAY_URL"
                 AIDEVS_API_KEY      = "AIDEVS_API_KEY"
