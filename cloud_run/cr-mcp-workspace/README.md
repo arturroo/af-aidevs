@@ -2,6 +2,15 @@
 
 This is a Model Context Protocol (MCP) server that provides file system access to isolated agent workspaces. It is designed to run on Google Cloud Run with a mounted GCS bucket (via Cloud Storage FUSE) but can also be run locally for development.
 
+## Multi-Layered Storage Architecture (OverlayFS / UnionFS)
+The server provides a dual-layer Virtual File System enforcing Zero-Trust sandboxing and zero-duplicate asset storage:
+- **Lower Layer (Read-Only Shared Base):** `shared/<lesson_id>/` holding static reference schematics, immutable blueprints, and fixtures.
+- **Upper Layer (Read-Write Session):** `<caller_identity>/<x_session_id>/` holding ephemeral runtime artifacts.
+- **Resolution:**
+  - `read_file`: Checks the upper session layer first; automatically cascades to the shared base layer if missing.
+  - `list_files`: Returns the unified set of files available across both layers.
+  - `write_file`: Strictly mutates the session layer, preserving immutable base assets.
+
 ## Local Development
 
 ### 1. Prerequisites

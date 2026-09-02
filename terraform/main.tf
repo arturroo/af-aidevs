@@ -43,11 +43,6 @@ module "gcf" {
     project_id = var.project_id
     cf_names = var.cf_names
     gcf_bucket = module.gstorage.gcf_bucket
-
-    depends_on = [
-        module.gstorage,
-        module.pubsub
-    ]
 }
 
 module "cloud_run" {
@@ -57,13 +52,9 @@ module "cloud_run" {
     source_bucket = module.gstorage.gcf_bucket # Reusing the same bucket for source zips
     
     # Pass dataset IDs and bucket names for internal IAM management
-    dataset_ids  = { for k, v in google_bigquery_dataset.dataset : k => v.dataset_id }
+    # Using var.datasets keys directly so Terraform evaluates data sources during plan
+    dataset_ids  = { for k, v in var.datasets : k => k }
     bucket_names = module.gstorage.bucket_names
-
-    depends_on = [
-        module.gstorage,
-        google_bigquery_dataset.dataset
-    ]
 }
 
 
