@@ -98,22 +98,25 @@ To test a service locally that depends on the private `af_aidevs` package in Art
         ---
         Your system instruction text goes here...
         ```
-      - **Loading**: Use the `load_system_prompt` function from the shared `utils` package (deployed to Artifact Registry) as the standard way to load prompts and metadata.
+      - **Loading**: Use the `load_system_prompt` function from the shared `af_aidevs.utils.prompts` package (deployed to Artifact Registry) as the standard way to load prompts and metadata.
       - **Example in `pyproject.toml`**:
         ```toml
         [project]
         dependencies = [
-            "af-aidevs-utils==0.1.0",
+            "af-aidevs==0.2.1",
         ]
 
         [[tool.uv.index]]
         name = "gar"
         url = "https://europe-west6-python.pkg.dev/af-aidevs/python-packages/simple/"
         explicit = true
+
+        [tool.uv.sources]
+        af-aidevs = { index = "gar" }
         ```
       - **Example in Python**:
         ```python
-        from utils.prompts import load_system_prompt
+        from af_aidevs.utils.prompts import load_system_prompt
         
         # Load prompt from current directory
         prompt_config = load_system_prompt(base_dir=".", filename="system_prompt.md")
@@ -121,7 +124,13 @@ To test a service locally that depends on the private `af_aidevs` package in Art
         print(prompt_config.system_prompt)
         print(prompt_config.model)
         ```
-      - **Package Versioning**: When modifying the `utils` package, always increment the version in `pyproject.toml` (e.g., from `0.1.0` to `0.1.1`) to avoid conflicts when publishing to Artifact Registry.
+      - **Package Versioning**: When modifying the `af_aidevs` package, always increment the version in `pyproject.toml` (e.g., from `0.2.1` to `0.2.2`) to avoid conflicts when publishing to Artifact Registry.
+    - **Design Pattern: Standard Shared Package (`af_aidevs`):** To avoid code duplication, eliminate cold-start drift, and guarantee architectural consistency across lessons, all lesson tasks, agents, and microservices MUST rely on the central `af_aidevs` shared package (deployed to Artifact Registry / resolved via `uv`) rather than reimplementing boilerplate clients. Specifically:
+      - **BigQuery Auditing:** Always use `af_aidevs.audit.bigquery` (`AuditService`, `BigQueryCallbackHandler`) for structured telemetry logging and streaming audit callbacks to `audit` tables.
+      - **MCP Connectivity:** Always use `af_aidevs.clients.mcp` (`get_all_mcp_tools`, `create_mcp_client`) for establishing multi-server MCP connections over HTTP with built-in `GoogleOIDCAuth` and `X-Session-ID` header propagation.
+      - **Model Armor:** Always use `af_aidevs.model_armor` for Zero-Trust prompt sanitization, jailbreak protection, and safety verification.
+      - **Prompt Management:** Always use `af_aidevs.utils.prompts.load_system_prompt` to load `system_prompt.md` with YAML frontmatter.
+      - **Base Schemas:** Always utilize common schema models from `af_aidevs.schemas.common` (such as `AgentResponseEnvelope[T]`) to standardize envelope structures, metadata fields, and audit reasoning across task-specific `schemas.py`.
     - **Design Pattern: get_current_date():** To ensure optimal LLM prompt caching (Context Caching), do NOT hardcode the date in the system prompt. Instead, always provide a `get_current_date()` tool that the agent can call when temporal context is needed.
     - **Design Pattern: run_notes.txt Execution Summary:** Whenever appropriate and sensible, task agents should write an execution summary and outcome report to `run_notes.txt` in their session workspace using the MCP `write_file` tool. This summary provides immediate human inspection and persistent auditability of task status, execution timestamp, framework/backend used, and retrieved course flags (e.g. `{FLG:...}`).
     - **Design Pattern: Multi-Layered Workspace (OverlayFS / UnionFS):** To enforce Zero-Trust isolation and prevent asset duplication across sessions, workspace storage (`cr-mcp-workspace`) uses a dual-layer Virtual File System:
@@ -250,68 +259,40 @@ To test a private MCP server deployed on Cloud Run (which requires IAM authentic
    } -Body $postParams
    ```
 
-### LangChain MCP Integration Pattern (Dynamic Discovery with Caching Auth)
-To connect a LangChain agent to an MCP server over HTTP with dynamic tool discovery and secure, cached Google OIDC authentication, use the following pattern based on `langchain-mcp-adapters`:
+### LangChain MCP Integration Pattern (Standardized Client via `af_aidevs`)
+To connect an agent to remote MCP servers (`cr-mcp-workspace`, `cr-mcp-web-gateway`) over HTTP with dynamic tool discovery, multi-server aggregation, and secure, cached Google OIDC authentication, always use the central client from `af_aidevs.clients.mcp`:
 
-1. **Dependencies:**
-   Add to `pyproject.toml`:
-   - `langchain-mcp-adapters==0.2.2`
-
-2. **Pattern Implementation:**
-   ```python
-   import os
-   import httpx
-   from datetime import datetime
-   from google.auth.transport.requests import Request
-   from google.oauth2 import id_token
-   from langchain_mcp_adapters.client import MultiServerMCPClient
-
-   class GoogleOIDCAuth(httpx.Auth):
-       """Custom HTTPX Auth to fetch and cache Google OIDC tokens."""
-       def __init__(self, audience: str):
-           self.audience = audience
-           self._token = None
-           self._expiry = 0
-           
-       def _get_token(self):
-           # Support local testing via env var
-           env_token = os.getenv("MCP_WORKSPACE_TOKEN")
-           if env_token:
-               return env_token
-               
-           now = datetime.now().timestamp()
-           if self._token and now < self._expiry:
-               return self._token
-               
-           try:
-               # Fetch fresh token from metadata server
-               self._token = id_token.fetch_id_token(Request(), self.audience)
-               self._expiry = now + 3000 # Cache for 50 minutes
-               return self._token
-           except Exception:
-               return ""
-
-       def auth_flow(self, request):
-           token = self._get_token()
-           if token:
-               request.headers["Authorization"] = f"Bearer {token}"
-           yield request
-
-   async def get_mcp_tools(session_id: str):
-       mcp_url = os.getenv("MCP_WORKSPACE_URL") or "https://cr-mcp-workspace-qsvqxjqyrq-oa.a.run.app"
-       
-       client = MultiServerMCPClient(
-           {
-               "workspace": {
-                   "transport": "http",
-                   "url": f"{mcp_url}/mcp",
-                   "headers": { "X-Session-ID": session_id },
-                   "auth": GoogleOIDCAuth(mcp_url),
-               }
-           }
-       )
-       return await client.get_tools()
+1. **Dependencies (`pyproject.toml`):**
+   ```toml
+   [project]
+   dependencies = [
+       "af-aidevs==0.2.1",
+       "langchain-mcp-adapters==0.2.2",
+   ]
    ```
+
+2. **Standard Implementation:**
+   ```python
+   from af_aidevs.clients.mcp import get_all_mcp_tools, create_mcp_client
+
+   # Option A: Single-call tool retrieval with automatic OIDC auth & session header
+   tools = await get_all_mcp_tools(
+       session_id=session_id,
+       workspace_url=config.MCP_WORKSPACE_URL,
+       web_url=config.MCP_WEB_GATEWAY_URL,
+   )
+
+   # Option B: MultiServerMCPClient instance for advanced lifecycle management
+   client = create_mcp_client(
+       session_id=session_id,
+       workspace_url=config.MCP_WORKSPACE_URL,
+       web_url=config.MCP_WEB_GATEWAY_URL,
+   )
+   tools = await client.get_tools()
+   ```
+
+3. **Under the Hood (`af_aidevs.auth.oidc`):**
+   The client automatically configures `GoogleOIDCAuth` which fetches ID tokens via the compute metadata server on Cloud Run (cached for 50 minutes), and supports local development overrides via `MCP_WORKSPACE_TOKEN` and `MCP_WEB_GATEWAY_TOKEN`.
 
 ### TODO
 - [ ] Migrate `system_message.md` and tool hints/instructions to **Vertex AI Prompt Management** to allow dynamic updates without Cloud Run redeployment.
