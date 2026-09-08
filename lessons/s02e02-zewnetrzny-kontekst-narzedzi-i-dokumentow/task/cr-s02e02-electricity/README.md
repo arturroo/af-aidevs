@@ -60,21 +60,27 @@ Upon the 5th rotation, the verification server returns `{"code": 0, "message": "
 
 ---
 
-## 4. Lessons Learned & Future Refactoring (A2A Vision Subagent)
+## 4. Lessons Learned & Future Refactoring (In-Process Multi-Agent Architecture)
 
 ### 4.1 Pragmatic Decision Context
 * **Decision**: We consolidated the vision analysis into a hermetic function-calling tool (`inspect_circuit_grid`) inside `cr-s02e02-electricity` reading directly from the mounted GCS workspace (`/mnt/workspaces`), rather than deploying a separate `cr-agent-vision` microservice.
 * **Rationale**: Strict timeline constraint to complete **Season 2, Season 3, and Season 4 by the end of September 2026**. Shipping a working, fully auditable, and secure implementation was prioritized over building an extra standalone microservice for this single task.
 
-### 4.2 Security & Blast Radius Tradeoff
-* **Current Setup**: `sa-cr-s02e02-electricity` holds `roles/storage.objectViewer` on `af-aidevs-workspaces` with `/mnt/workspaces` mounted as a read-only GCS FUSE volume.
-* **Target Zero-Trust Pattern**:
-  1. The orchestrator agent should have **zero direct storage permissions**.
-  2. A dedicated `cr-agent-vision` microservice runs in the internal perimeter and accepts image references (or scoped 2-minute signed URLs).
-  3. The vision specialist parses the schematic and returns structured `TilePinout` / `GridCircuitSolverData` responses over authenticated A2A (Agent-to-Agent) endpoints.
+### 4.2 Recommended Target Pattern: In-Process Multi-Agent (Single Cloud Run)
+Rather than splitting specialists into separate Cloud Run services communicating over HTTP A2A (which adds network latency, cold starts, and infrastructure complexity), the **recommended pattern is an In-Process Multi-Agent Architecture hosted inside a single Cloud Run container**:
 
-### 4.3 Blueprint to Resume A2A Migration
-When revisiting this lesson:
-1. Create `cloud_run/cr-agent-vision` microservice exposing `POST /inspect` conforming to `af_aidevs.schemas.vision.GridCircuitSolverData`.
-2. Update Terraform `cr_names` to provision `cr-agent-vision` with GCS read permissions and grant `sa-cr-s02e02-electricity` `roles/run.invoker` on `cr-agent-vision`.
-3. Swap `inspect_circuit_grid` tool implementation to invoke the remote `cr-agent-vision` endpoint via OIDC-authenticated HTTP client.
+1. **LangSmith / LangGraph In-Process Pattern**:
+   * **Supervisor Node**: High-level reasoning, web dispatching via MCP Web Gateway, report writing.
+   * **Vision Subagent Node**: Specialized in-process agent handling pinout analysis and circuit delta calculation.
+   * **Observability**: Automatically traced as hierarchical parent-child runs in **LangSmith** with nested spans (`Orchestrator -> Vision Subagent -> Tool Calls`).
+2. **Google ADK In-Process Pattern**:
+   * **Root Agent**: Drives the primary loop.
+   * **Hierarchical Subagent**: Specialized subagent instance invoked as a tool/coroutine within the parent process.
+   * **Observability**: Structured telemetry events streamed to BigQuery `audit` table.
+
+### 4.3 Key Advantages of In-Process Multi-Agent
+* **Zero Network Overhead**: Eliminates extra HTTP request hops and cold starts.
+* **Direct RAM Sharing**: High-resolution image buffers stay in memory or local `/mnt/workspaces` without generating external network traffic.
+* **Unified Cloud Run Footprint**: Single Terraform service definition and single IAM identity (`sa-cr-s02e02-electricity`).
+* **Clean Separation of Concerns**: Specialist prompts and toolsets remain isolated without microservice sprawl.
+
