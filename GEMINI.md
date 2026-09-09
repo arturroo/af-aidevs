@@ -81,7 +81,7 @@ To test a service locally that depends on the private `af_aidevs` package in Art
 
 ### Agentic Software Engineering Principles
 
-- **Pre-Flight Agent Readiness & Security Checklist:** Before developing or deploying any agent or granting it tool access, evaluate the mandatory [Pre-Flight Agent Readiness & Security Checklist](docs/patterns/agent-readiness-checklist.md) covering threat modeling (*Blast Radius*), rollback capability (*Disaster Recovery*), auditability, legal compliance (GDPR/AI Act), and the *Workflow vs. Agent* decision matrix.
+- **Pre-Flight Agent Readiness & Security Checklist:** Before developing or deploying any agent or granting it tool access, evaluate the mandatory [Pre-Flight Agent Readiness & Security Checklist](docs/af-aidevs/patterns/agent-readiness-checklist.md) covering threat modeling (*Blast Radius*), rollback capability (*Disaster Recovery*), auditability, legal compliance (GDPR/AI Act), and the *Workflow vs. Agent* decision matrix.
 - **Contract-First Tool Design:** We prioritize defining the "Public API" (AI-facing schema) before writing the tool's logic. We align with Google's API Design Guide and Google API Improvement Proposals (AIPs at https://aip.dev). Specifically:
     - **Method-Specific Responses:** Every tool method MUST have its own dedicated response Pydantic model (e.g. `ReadFileResponse`, `ListFilesResponse`) to ensure zero schema ambiguity, type safety, and optimal LLM performance by eliminating unused/nullable fields.
   - **Schemas:** All tool input/output structures must be defined in `schemas.py` using Pydantic models. This serves as the source of truth for the LLM.
