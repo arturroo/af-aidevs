@@ -139,6 +139,6 @@ Chosen combination: **Option 1A + Option 2A + Option 3A + Option 4A**, because:
 ## More Information
 
 * **Related Documents**:
-  - [BRD.md](file:///c:/Users/admin/git/arturroo/af-aidevs/lessons/s03e01-obserwowanie-i-ewaluacja/task/BRD.md)
-  - [Pre-Flight Agent Readiness Checklist](file:///c:/Users/admin/git/arturroo/af-aidevs/docs/af-aidevs/patterns/agent-readiness-checklist.md)
+  - [BRD.md](BRD.md)
+  - [Pre-Flight Agent Readiness Checklist](../../../docs/af-aidevs/patterns/agent-readiness-checklist.md)
 * **Status**: Set to `Proposed`. Requires review and transition to `Accepted` by Artur before PRD generation.

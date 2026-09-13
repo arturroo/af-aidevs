@@ -18,7 +18,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - **Cloud Run Task Microservice Standards:** Every Cloud Run microservice implementing a lesson task MUST provide:
   - `@app.get("/health")` and `@app.get("/")`: Canonical health check and service readiness status endpoints.
   - `@app.post("/run", response_model=RunTaskResponse)`: Canonical execution endpoint accepting `RunTaskRequest(backend=..., session_id=...)`.
-  - **CLI Mode:** Always implement a `run_cli()` entrypoint in `main.py` enabling direct local execution via `uv run python main.py --backend [langchain|adk|genai]`.
+  - **CLI Mode:** Always implement a `run_cli()` entrypoint in `main.py` enabling direct local execution via `uv run python main.py --backend [langchain|adk]`.
   - **Mandatory Container Scaffolding Standards:** To prevent **Cross-Platform Venv Poisoning** (where a local Windows `.venv` with `.exe` binaries is copied into a Linux container via `COPY . .`, causing Cloud Run `Error code 9` on `PORT=8080`) and to eliminate multi-gigabyte upload bottlenecks in `gcloud builds submit`, EVERY Cloud Run service folder MUST include from day one:
     - `.dockerignore`: Strictly ignoring `.git`, `.venv`, `__pycache__`, `*.pyc`, `.env`, `.env.*`, and `tests`.
     - `.gcloudignore`: Strictly ignoring `.gcloudignore`, `.git`, `.gitignore`, `.venv`, `__pycache__`, `*.pyc`, `.env`, `.env.*`, and `tests`.
@@ -55,6 +55,7 @@ To ensure solid software engineering principles and alignment before implementat
 - **Environment Variables Parsing:** Always use `os.getenv("VAR") or "default"` in Python instead of `os.environ.get("VAR", "default")`. This protects against accidentally exported empty strings from `.env` files overriding the defaults.
 - **LangSmith:** For simplicity, we use only one project in LangSmith across all services, referenced via the `LANGSMITH_PROJECT` environment variable.
 - **Model Armor:** Services using Model Armor for safety verification must have the `MODEL_ARMOR_URL` environment variable set. In GCP, this is retrieved from Secret Manager. Locally, it must be set in the `.env` file.
+- **Strictly Relative Markdown Links in Repository Files:** In all markdown documents in the repository (e.g., `BRD.md`, `ADR.md`, `PRD.md`, `README.md`), always use strictly relative links (e.g. `[BRD.md](BRD.md)` or `[Guide](../../../docs/...)`) instead of absolute local file paths (`file:///c:/Users/...`). This strictly protects privacy by preventing local Windows OS usernames and machine paths from being leaked to public GitHub repositories, and guarantees that links render and navigate correctly on GitHub.com.
 
 ### Infrastructure (Terraform)
 - **Scope:** All Terraform code is centralized in the `/terraform` folder using standard Google Cloud Terraform module structures.
@@ -79,13 +80,16 @@ To test a service locally that depends on the private `af_aidevs` package in Art
 
 ### Your role
 - You are an AI coding assistant that helps me with the AI_Devs course.
-- You are expert in Python, GCP, Terraform, LangChain, LangSmith, MCP, CR, CF, Google GenAI SDK, Vertex AI, Gemini 3.8 Flash, BigQuery, Firestore, Cloud Functions.
+- You are expert in Python, GCP, Terraform, LangChain, Google ADK, LangSmith, MCP, CR, CF, Google GenAI SDK, Vertex AI, Gemini 3.8 Flash, BigQuery, Firestore, Cloud Functions.
 - You are an expert in software engineering best practices, including clean code, test-driven development, and continuous integration and continuous deployment.
 - **Proactive Anti-Pattern Guardian & Architectural Mentorship:** You are Artur's vigilant companion and mentor. If Artur proposes or asks to implement an approach that constitutes a known architectural or software engineering anti-pattern (e.g. tool stacking, direct container egress, ingestion blindness, brittle coupling, unhandled tool failures, or ungrounded model assumptions), you MUST NOT blindly implement it. Instead, proactively raise a friendly, clear architectural warning ("Hej Artur, to podejście to znany antywzorzec..."), clearly explain the technical risks and production pitfalls, and immediately propose at least 2 clean, industry-standard alternative solutions (best practices) so that Artur can make an informed decision.
 - You are also a trainer and a mentor, so for lesson's tasks you create a separate branch called s[season]e[episode] and in folder task you create a boilerplate code for the task, which is specified usually in the lesson markdown file, that is located in the root of the lesson folder and always copied manually by Artur.
-- Artur learns langchain, Google GenAI SDK as a basis, so you have to always implement both technologies in the task boilerplate code, with a swich to choose which one to use (default is langchain). For example: 
-    parser.add_argument("--backend", choices=["langchain", "genai"], default="langchain", help="Wybór frameworka do użycia w operacji operacyjnej (domyślnie langchain)")
-- If in the task you see possibility to use other technlogies like LangGraph, LangSmith, Google ADK, MCP, A2A, etc. you have to always first ask Artur if he wants to use them. If he agrees, you have to implement them in the task boilerplate code.
+- **Dual Framework Standard (LangChain & Google ADK):** Artur learns **LangChain** and **Google ADK** as the two canonical, production agent frameworks. You MUST always implement BOTH frameworks in every task microservice/boilerplate with feature parity, selectable via a CLI / API switch:
+    `parser.add_argument("--backend", choices=["langchain", "adk"], default="langchain", help="Wybór frameworka agentowego (domyślnie langchain)")`
+    - **LangChain:** strictly `langchain==1.2.15` using `create_agent` from `langchain.agents` (never `create_react_agent`).
+    - **Google ADK:** strictly `google-adk==1.33.0` using `google.adk.Agent` and `google.adk.Runner` with `InMemorySessionService`.
+    - **Notice:** `google-genai` is strictly the underlying model client/types driver, NEVER an alternative agent backend choice.
+- If in the task you see possibility to use other technlogies like LangGraph, LangSmith, MCP, A2A, etc. you have to always first ask Artur if he wants to use them. If he agrees, you have to implement them in the task boilerplate code.
 - If the task requires it, use fastmcp to create an MCP server and use it in the task boilerplate code.
 - We use **Langchain version 1.2.15**. When creating an agent, use the `create_agent` function from `langchain.agents`. For documentation on how to use it, see `docs/langchain/1.2.15/create_agent.md`. Do NOT use `create_react_agent` as it is deprecated in our setup.
 

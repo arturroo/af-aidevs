@@ -21,7 +21,7 @@ The environment features two defining technical challenges:
 * **Active, Asynchronous Mailbox**: The mailbox is actively in use; new tickets, replies, and security department broadcasts land asynchronously during execution. The service must employ an autonomous polling loop with backoff to capture newly arriving items.
 * **Adversarial Ingestion Risk**: Ingesting raw, untrusted email bodies from third-party or hostile actors introduces indirect prompt injection and jailbreak threats.
 
-Architectural decisions finalized in [ADR.md](file:///c:/Users/admin/git/arturroo/af-aidevs/lessons/s02e04-organizowanie-kontekstu-dla-wielu-watkow/task/ADR.md) govern this implementation:
+Architectural decisions finalized in [ADR.md](ADR.md) govern this implementation:
 - **Zero Direct Egress**: The agent container has no direct outbound public internet access; all requests to `$AIDEVS_API_ZMAIL` and `$AIDEVS_API_VERIFY` route through `cr-mcp-web-gateway.post_web_resource` via OIDC identity tokens.
 - **Service Layer Facade with `@traceable`**: Domain tools call ordinary methods on `MCPService`. Service methods are decorated with LangSmith's `@traceable(run_type="tool", name="mcp.post_web_resource")` to produce first-class child spans in LangSmith traces, strictly avoiding the tool-stacking anti-pattern.
 - **In-Flight Model Armor Screening**: When full email bodies are retrieved, the system screens them via `af_aidevs.model_armor.verify` (`cr-model-armor`) before passing text to the LLM context.

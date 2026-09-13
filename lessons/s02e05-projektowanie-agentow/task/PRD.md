@@ -22,7 +22,7 @@ The agent must accomplish this by:
 * Interacting iteratively with Centrala's `/verify` endpoint, consuming diagnostic error feedback, dynamically refining command arguments, and autonomously invoking `hardReset` when state conflicts arise.
 * Capturing the course completion flag `{FLG:...}` and recording full-fidelity, unaggregated execution telemetry to BigQuery dataset `s02e05`.
 
-Architectural decisions finalized in [ADR.md](file:///c:/Users/admin/git/arturroo/af-aidevs/lessons/s02e05-projektowanie-agentow/task/ADR.md) govern this implementation:
+Architectural decisions finalized in [ADR.md](ADR.md) govern this implementation:
 - **In-Process Multi-Agent Topology**: Supervisor (orchestrator with delegation and tool access) and Vision Worker (multimodal coordinate extractor) execute within the same Cloud Run Python process.
 - **Lean Context & Ephemeral Image Ingestion**: The high-resolution map is retrieved once by the Supervisor and stored in `cr-mcp-workspace`. Workspace resolves the canonical GCS URI via `get_file_uri()`. The Vision Worker submits `Part.from_uri()` to Gemini 3.8 Flash, extracts `DamCoordinates`, and returns only this compact Pydantic text to the Supervisor. Raw image data never enters the Supervisor's prompt history.
 - **Zero Direct Egress**: The container has no public internet access; all requests to `$AIDEVS_DRONE_MAP_URL`, `$AIDEVS_DRONE_DOCS_URL`, and `$AIDEVS_API_VERIFY` route through `cr-mcp-web-gateway` over OIDC identity tokens cached via `cachetools` (50-min TTL).
