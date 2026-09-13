@@ -1,10 +1,11 @@
+import mimetypes
 from pydantic import Field
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentContext
 from fastmcp.server.context import Context
 
 from utils import get_safe_path, log_audit, extract_lesson_id
-from config import WORKSPACE_MOUNT_ROOT
+import config
 from state import SESSION_MAPPING
 from schemas import ListFilesResponse
 
@@ -33,16 +34,28 @@ def register_list_files(mcp: FastMCP):
             # 1. OverlayFS: Scan Read-Only Shared Base Layer first
             lesson_id = extract_lesson_id(workspace_name)
             if lesson_id:
-                shared_workspace = (WORKSPACE_MOUNT_ROOT / "shared" / lesson_id).resolve()
+                shared_workspace = (config.WORKSPACE_MOUNT_ROOT / "shared" / lesson_id).resolve()
                 shared_target = (shared_workspace / path).resolve()
                 if shared_target.exists() and shared_target.is_dir() and str(shared_target).startswith(str(shared_workspace)):
                     for f in shared_target.iterdir():
                         try:
                             is_dir = f.is_dir()
+                            if is_dir:
+                                mime_type = "inode/directory"
+                                is_binary = False
+                            else:
+                                guessed_type, _ = mimetypes.guess_type(f.name)
+                                mime_type = guessed_type or "application/octet-stream"
+                                is_binary = not (
+                                    mime_type.startswith("text/")
+                                    or mime_type in ["application/json", "application/xml", "application/javascript"]
+                                )
                             files_map[f.name] = {
                                 "name": f.name,
                                 "type": "directory" if is_dir else "file",
                                 "size_bytes": f.stat().st_size if not is_dir else 0,
+                                "mime_type": mime_type,
+                                "is_binary": is_binary,
                             }
                         except Exception:
                             continue
@@ -52,10 +65,22 @@ def register_list_files(mcp: FastMCP):
                 for f in target_path.iterdir():
                     try:
                         is_dir = f.is_dir()
+                        if is_dir:
+                            mime_type = "inode/directory"
+                            is_binary = False
+                        else:
+                            guessed_type, _ = mimetypes.guess_type(f.name)
+                            mime_type = guessed_type or "application/octet-stream"
+                            is_binary = not (
+                                mime_type.startswith("text/")
+                                or mime_type in ["application/json", "application/xml", "application/javascript"]
+                            )
                         files_map[f.name] = {
                             "name": f.name,
                             "type": "directory" if is_dir else "file",
                             "size_bytes": f.stat().st_size if not is_dir else 0,
+                            "mime_type": mime_type,
+                            "is_binary": is_binary,
                         }
                     except Exception:
                         continue

@@ -16,6 +16,65 @@ class ReadFileResponse(BaseModel):
         json_schema_extra={"example": "File is empty."}
     )
 
+class ReadBinaryFileResponse(BaseModel):
+    status: str = Field(
+        description="Operation status: 'success' or 'error'",
+        json_schema_extra={"example": "success"}
+    )
+    content_base64: str = Field(
+        description="The RFC 4648 Base64-encoded binary content of the file",
+        json_schema_extra={"example": "UEsDBAoAAAAIA..."}
+    )
+    size_bytes: int = Field(
+        description="Exact file size in bytes",
+        json_schema_extra={"example": 3145728}
+    )
+    mime_type: str = Field(
+        description="Detected or inferred MIME type",
+        json_schema_extra={"example": "application/zip"}
+    )
+    sha256: str = Field(
+        description="SHA-256 hex digest of the raw binary payload",
+        json_schema_extra={"example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+    )
+    hint: Optional[str] = Field(
+        default=None,
+        description="Optional progressive disclosure or guidance",
+        json_schema_extra={"example": "Binary file read successfully. Decode base64 to process."}
+    )
+
+class FileInfoResponse(BaseModel):
+    status: str = Field(
+        description="Operation status: 'success' or 'error'",
+        json_schema_extra={"example": "success"}
+    )
+    file_path: str = Field(
+        description="Relative path of the inspected file",
+        json_schema_extra={"example": "sensors.zip"}
+    )
+    size_bytes: int = Field(
+        description="File size in bytes",
+        json_schema_extra={"example": 3145728}
+    )
+    mime_type: str = Field(
+        description="Detected MIME type",
+        json_schema_extra={"example": "application/zip"}
+    )
+    is_binary: bool = Field(
+        description="True if binary, False if text/UTF-8",
+        json_schema_extra={"example": True}
+    )
+    sha256: Optional[str] = Field(
+        default=None,
+        description="SHA-256 hex digest if computed",
+        json_schema_extra={"example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+    )
+    hint: Optional[str] = Field(
+        default=None,
+        description="Optional guidance or warning",
+        json_schema_extra={"example": "File is binary. Use read_binary_file to read."}
+    )
+
 class WriteFileResponse(BaseModel):
     status: str = Field(
         description="Operation status: 'success' or 'error'",
@@ -221,5 +280,25 @@ class ListMarkdownSectionsInput(BaseModel):
     file_path: str = Field(
         description="Relative path to the markdown file in the workspace",
         json_schema_extra={"example": "PRD.md"}
+    )
+
+class ReadBinaryFileInput(BaseModel):
+    reasoning: str = Field(
+        description="Mandatory justification explaining why this binary file needs to be read",
+        json_schema_extra={"example": "Reading sensors.zip archive for in-memory decompression"}
+    )
+    file_path: str = Field(
+        description="Relative path to the binary file to read from the session workspace",
+        json_schema_extra={"example": "sensors.zip"}
+    )
+
+class GetFileInfoInput(BaseModel):
+    reasoning: str = Field(
+        description="Mandatory justification explaining why file metadata inspection is needed",
+        json_schema_extra={"example": "Checking MIME type and size of downloaded file before reading"}
+    )
+    file_path: str = Field(
+        description="Relative path to the file in the session workspace",
+        json_schema_extra={"example": "sensors.zip"}
     )
 

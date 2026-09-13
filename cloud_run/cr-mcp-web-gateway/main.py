@@ -21,6 +21,9 @@ from starlette.responses import JSONResponse
 from state import SESSION_MAPPING, x_session_id_ctx
 from config import WORKSPACE_MOUNT_ROOT
 from utils import log_audit
+from schemas import FetchWebResourceResponse
+import hashlib
+import mimetypes
 
 # --- 1. CONFIGURATION ---
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -58,8 +61,8 @@ async def fetch_web_resource(
     url: str = Field(description="The URL of the resource to fetch"),
     output_path: str = Field(description="The relative path where the fetched resource should be saved in the workspace"),
     ctx: Context = CurrentContext()
-) -> str:
-    """Downloads an external web resource (file) directly to the session's workspace."""
+) -> FetchWebResourceResponse:
+    """Downloads an external web resource (file) directly to the session's workspace and returns metadata."""
     mcp_session_id = ctx.session_id
     session_data = SESSION_MAPPING.get(mcp_session_id)
     if not session_data:
@@ -85,11 +88,44 @@ async def fetch_web_resource(
             response = await client.get(url)
             response.raise_for_status()
             
+        sha256_checksum = hashlib.sha256(response.content).hexdigest()
+        raw_content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+        if not raw_content_type or raw_content_type == "application/octet-stream":
+            guessed_type, _ = mimetypes.guess_type(output_path)
+            content_type = guessed_type or "application/octet-stream"
+        else:
+            content_type = raw_content_type
+
+        is_binary = not (
+            content_type.startswith("text/")
+            or content_type in ["application/json", "application/xml", "application/javascript"]
+        )
+
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(response.content)
         
-        log_audit("web-gateway", "Fetched resource successfully", {"workspace": workspace_name, "output_path": output_path, "size": len(response.content)}, session_id=x_session_id)
-        return f"Successfully fetched resource and saved to {output_path} (size: {len(response.content)} bytes)"
+        log_audit(
+            "web-gateway",
+            "Fetched resource successfully",
+            {
+                "workspace": workspace_name,
+                "output_path": output_path,
+                "size": len(response.content),
+                "mime_type": content_type,
+                "is_binary": is_binary,
+                "sha256": sha256_checksum,
+            },
+            session_id=x_session_id
+        )
+        return FetchWebResourceResponse(
+            output_path=output_path,
+            size_bytes=len(response.content),
+            mime_type=content_type,
+            is_binary=is_binary,
+            sha256=sha256_checksum,
+            status=f"Successfully fetched resource and saved to {output_path} (size: {len(response.content)} bytes)",
+            hint="Binary file detected. Use read_binary_file to inspect." if is_binary else "Text file detected. Use read_file to inspect."
+        )
     except Exception as e:
         log_audit("web-gateway", "Fetch resource failed", {"url": url, "output_path": output_path, "error": str(e)}, session_id=x_session_id)
         raise Exception(f"Failed to fetch resource: {e}")
