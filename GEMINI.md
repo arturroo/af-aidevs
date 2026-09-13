@@ -37,6 +37,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 
 ### Task Specification Documents (Requirements & Decisions Workflow)
 To ensure solid software engineering principles and alignment before implementation, every lesson task follows this document lifecycle inside its `task/` directory by executing skills:
+0. **Lesson Initialization:** Sync latest `main`, create a dedicated lesson branch, and scaffold directory structure. Skill: `new-lesson-init`
 1. **BRD (Business Requirements Document):** Generate a `BRD.md` file containing the extracted/translated task requirements from the lesson markdown. Skill: create-brd
 2. **ADR (Architecture Decision Record):** Generate an `ADR.md` file detailing architectural and design choices (such as technologies used, caching strategies, model settings, and exception handling). Skill: create-adr
 3. **PRD (Product Requirements Document):** Generate a `PRD.md` file based on the BRD and ADR that serves as the final specification. Skill: create-prd
