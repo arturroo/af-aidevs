@@ -15,6 +15,15 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - **Markdown Files:** The primary notes file inside the directory should simply be named `lesson.md` or `notes.md` to avoid redundant paths (like `S01E01-title/S01E01-title.md`), though keeping the downloaded markdown name as-is (e.g., `s01e01-programowanie...md`) is also perfectly fine if downloaded directly from the course platform. All markdown files and documentation (including READMEs) MUST be created in English to optimize token usage for the LLM.
 - **BigQuery:** Always create tables for a particular lesson in a BigQuery dataset named after that lesson (e.g., dataset `s01e03`).
 - GCP standards: BigQuery (`bq`), Firestore (`fs`), Cloud Functions entry point is always `main()`.
+- **Cloud Run Task Microservice Standards:** Every Cloud Run microservice implementing a lesson task MUST provide:
+  - `@app.get("/health")` and `@app.get("/")`: Canonical health check and service readiness status endpoints.
+  - `@app.post("/run", response_model=RunTaskResponse)`: Canonical execution endpoint accepting `RunTaskRequest(backend=..., session_id=...)`.
+  - **CLI Mode:** Always implement a `run_cli()` entrypoint in `main.py` enabling direct local execution via `uv run python main.py --backend [langchain|adk|genai]`.
+  - **Mandatory Container Scaffolding Standards:** To prevent **Cross-Platform Venv Poisoning** (where a local Windows `.venv` with `.exe` binaries is copied into a Linux container via `COPY . .`, causing Cloud Run `Error code 9` on `PORT=8080`) and to eliminate multi-gigabyte upload bottlenecks in `gcloud builds submit`, EVERY Cloud Run service folder MUST include from day one:
+    - `.dockerignore`: Strictly ignoring `.git`, `.venv`, `__pycache__`, `*.pyc`, `.env`, `.env.*`, and `tests`.
+    - `.gcloudignore`: Strictly ignoring `.gcloudignore`, `.git`, `.gitignore`, `.venv`, `__pycache__`, `*.pyc`, `.env`, `.env.*`, and `tests`.
+    - `cloudbuild.yaml`: Standardized manifest using `gcr.io/cloud-builders/docker` with `--build-arg UV_INDEX_GAR_PASSWORD=$_TOKEN`.
+    - `Dockerfile`: Using official `python:3.13.5-slim`, `ENV PYTHONUNBUFFERED=1`, `COPY pyproject.toml ./`, `RUN uv sync`, `COPY . .`, and `CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]`.
 - LLM Default: Starting **2026-09-07** (from lesson `s02e04` onwards), we use **Gemini 3.8 Flash** (`gemini-3.8-flash`) on **Vertex AI** via the modern `google-genai` SDK and `langchain-google-genai` as our primary workhorse model. Default location is `GOOGLE_CLOUD_LOCATION=global`, with default thinking level set to `thinking_level="low"` (or `types.ThinkingLevel.LOW`) to minimize latency and token overhead.
   - Model Guide & Reference: [Gemini 3.8 Flash Developer Guide](docs/vertex-ai/gemini-3.8-flash-guide.md)
   - Pricing Reference: https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing?hl=en

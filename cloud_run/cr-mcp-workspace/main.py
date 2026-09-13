@@ -15,6 +15,8 @@ from starlette.responses import JSONResponse
 
 from state import SESSION_MAPPING, x_session_id_ctx
 from tools.filesystem.read_file import register_read_file
+from tools.filesystem.read_binary_file import register_read_binary_file
+from tools.filesystem.get_file_info import register_get_file_info
 from tools.filesystem.write_file import register_write_file
 from tools.filesystem.list_files import register_list_files
 from tools.rag.grep import register_grep
@@ -57,6 +59,8 @@ mcp = WorkspaceManager("Workspace-Manager")
 
 # --- 4. TOOLS REGISTRATION ---
 register_read_file(mcp)
+register_read_binary_file(mcp)
+register_get_file_info(mcp)
 register_write_file(mcp)
 register_list_files(mcp)
 register_grep(mcp)

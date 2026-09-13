@@ -37,7 +37,8 @@ class DummyMCP:
         return decorator
 
 @pytest.fixture(autouse=True)
-def setup_teardown():
+def setup_teardown(monkeypatch):
+    monkeypatch.setattr(config, "WORKSPACE_MOUNT_ROOT", test_root)
     # Setup test workspace
     test_root.mkdir(parents=True, exist_ok=True)
     yield

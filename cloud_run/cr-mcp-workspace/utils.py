@@ -5,7 +5,7 @@ import json
 from typing import Optional, Tuple
 from pathlib import Path
 from fastmcp.server.context import Context
-from config import RESOURCE_NAME, WORKSPACE_MOUNT_ROOT
+import config
 from state import SESSION_MAPPING
 
 
@@ -13,7 +13,7 @@ def log_audit(actor: str, content: str, metadata: dict, session_id: str = "unkno
     """Logs interaction as a structured JSON to stdout for Cloud Logging to capture."""
     audit_entry = {
         "log_type": "AUDIT",
-        "resource_name": RESOURCE_NAME,
+        "resource_name": config.RESOURCE_NAME,
         "session_id": session_id,
         "actor": actor,
         "content": content,
@@ -46,8 +46,8 @@ def get_safe_path(
     """Validates session, updates activity, and returns a secure resolved Path.
 
     Enforces Multi-Layered Virtual File System (OverlayFS):
-    - Upper Layer (Read-Write Session): WORKSPACE_MOUNT_ROOT / caller / session_id / relative_path
-    - Lower Layer (Read-Only Shared Base): WORKSPACE_MOUNT_ROOT / shared / lesson_id / relative_path
+    - Upper Layer (Read-Write Session): config.WORKSPACE_MOUNT_ROOT / caller / session_id / relative_path
+    - Lower Layer (Read-Only Shared Base): config.WORKSPACE_MOUNT_ROOT / shared / lesson_id / relative_path
     """
     mcp_session_id = ctx.session_id
     session_data = SESSION_MAPPING.get(mcp_session_id)
@@ -60,7 +60,7 @@ def get_safe_path(
     # Update activity timestamp
     session_data["last_activity"] = time.time()
 
-    agent_workspace = (WORKSPACE_MOUNT_ROOT / workspace_name / x_session_id).resolve()
+    agent_workspace = (config.WORKSPACE_MOUNT_ROOT / workspace_name / x_session_id).resolve()
     target_path = (agent_workspace / relative_path).resolve()
 
     if not str(target_path).startswith(str(agent_workspace)):
@@ -76,7 +76,7 @@ def get_safe_path(
     if allow_shared_fallback and (not target_path.exists()):
         lesson_id = extract_lesson_id(workspace_name)
         if lesson_id:
-            shared_workspace = (WORKSPACE_MOUNT_ROOT / "shared" / lesson_id).resolve()
+            shared_workspace = (config.WORKSPACE_MOUNT_ROOT / "shared" / lesson_id).resolve()
             shared_path = (shared_workspace / relative_path).resolve()
             if str(shared_path).startswith(str(shared_workspace)) and shared_path.exists():
                 target_path = shared_path
