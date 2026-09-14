@@ -7,7 +7,7 @@ status: "approved"
 date: 2026-09-04
 author: Artur, Joi
 reviewers: Artur
-adr: "[ADR.md](file:///c:/Users/admin/git/arturroo/af-aidevs/lessons/s02e03-dokumenty-oraz-pamiec-dlugoterminowa-jako-narzedzia/task/ADR.md)"
+adr: "ADR.md"
 ---
 
 # Technical PRD: Failure Log Compression & Autonomous Remediation (`failure`)

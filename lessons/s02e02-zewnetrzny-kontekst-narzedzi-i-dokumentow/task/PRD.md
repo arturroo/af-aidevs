@@ -288,7 +288,7 @@ If `tile_confidence < 0.9` for any tile (e.g., ambiguous contrast or no rotation
 ### File Structure
 
 ```text
-c:\Users\admin\git\arturroo\af-aidevs\
+af-aidevs/
 ├── python_packages/af_aidevs/
 │   ├── pyproject.toml                     # Bumped to version == "0.2.0"
 │   ├── af_aidevs/

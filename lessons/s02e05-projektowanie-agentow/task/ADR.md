@@ -129,7 +129,7 @@ Chosen combination: **Option 1A + Option 2A + Option 3A + Option 4A + Option 5A*
 ## More Information
 
 * **Related Documents**:
-  - [BRD.md](file:///c:/Users/admin/git/arturroo/af-aidevs/lessons/s02e05-projektowanie-agentow/task/BRD.md)
-  - [Pre-Flight Agent Readiness Checklist](file:///c:/Users/admin/git/arturroo/af-aidevs/docs/af-aidevs/patterns/agent-readiness-checklist.md)
-  - [Cloud Run Token Caching](file:///c:/Users/admin/git/arturroo/af-aidevs/docs/af-aidevs/patterns/cloud-run-token-caching.md)
+  - [BRD.md](BRD.md)
+  - [Pre-Flight Agent Readiness Checklist](../../../docs/af-aidevs/patterns/agent-readiness-checklist.md)
+  - [Cloud Run Token Caching](../../../docs/af-aidevs/patterns/cloud-run-token-caching.md)
 * **Status**: Set to `Proposed`. Requires review and transition to `Accepted` by Artur before PRD generation.

@@ -7,7 +7,7 @@ status: "approved"
 date: 2026-07-06
 author: Joi
 reviewers: [Artur]
-adr: [ADR.md](file:///c:/Users/admin/git/arturroo/af-aidevs/lessons/s02e01-zarz%C4%85dzanie-kontekstem-w-konwersacji/task/ADR.md)
+adr: "ADR.md"
 ---
 
 # Categorization Agent with MCP Ecosystem Integration (Web Gateway & Agentic RAG)
