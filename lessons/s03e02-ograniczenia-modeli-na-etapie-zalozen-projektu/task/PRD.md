@@ -348,7 +348,8 @@ cr-s03e02-firmware/
 5. **Shell & Verification Services**: Implement `services/shell_service.py` with `tenacity` retry and ban cooldown handling, and `services/verification_service.py`. Add tests in `tests/test_shell_service.py`.
 6. **Agent Implementations**: Implement `agents/base.py`, `agents/langchain_agent.py` (`create_agent`), and `agents/adk_agent.py` (`google-adk==1.33.0` `Agent` & `Runner`), with `agents/factory.py`.
 7. **FastAPI & CLI**: Implement `main.py` with `/health`, `/run`, and CLI parser `--backend [langchain|adk]`.
-8. **End-to-End Validation**: Run unit tests (`uv run pytest`), execute task via CLI, verify token submission and BigQuery audit logs.
+8. **Terraform Infrastructure Registration**: Register BigQuery dataset `s03e02`, audit table `s03e02_audit`, and Cloud Run service `cr-s03e02-firmware` in `terraform/variables.tf`.
+9. **End-to-End Validation**: Run unit tests (`uv run pytest`), execute task via CLI, verify token submission and BigQuery audit logs.
 
 ### Acceptance Criteria (Testable)
 * [ ] `uv lock` generates a clean lockfile with Python 3.13.5 and exact pinned versions.
