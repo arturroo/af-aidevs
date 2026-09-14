@@ -81,6 +81,9 @@ variable "datasets" {
         "s03e02" = {
             description = "Dataset for S03E02 ECCS firmware troubleshooting agent tasks"
         }
+        "s03e03" = {
+            description = "Dataset for S03E03 autonomous reactor navigation agent tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -156,6 +159,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S03E02 ECCS firmware troubleshooting agent"
             dataset_id  = "s03e02"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s03e03_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S03E03 autonomous reactor navigation agent"
+            dataset_id  = "s03e03"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -694,6 +703,43 @@ variable "cr_names" {
                 AIDEVS_API_KEY          = "AIDEVS_API_KEY"
                 AIDEVS_VERIFY           = "AIDEVS_VERIFY"
                 AIDEVS_API_SHELL        = "AIDEVS_API_SHELL"
+            }
+        }
+        "cr-s03e03-reactor" = {
+            source_dir    = "../lessons/s03e03-kontekstowy-feedback-wspierajacy-skutecznosc-agentow/task/cr-s03e03-reactor"
+            cpu           = "1"
+            memory        = "1Gi"
+            public        = false
+            cpu_idle      = true
+            max_instances = 1
+            concurrency   = 80
+            timeout       = "600s"
+            use_pack      = false
+            env           = {
+                BACKEND            = "langchain"
+                BQ_DATASET         = "s03e03"
+                BQ_TABLE           = "audit"
+                BQ_AUDIT_TABLE     = "af-aidevs.s03e03.audit"
+                LANGSMITH_TRACING  = "true"
+                LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s03e03" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-mcp-workspace"   = ["roles/run.invoker"]
+                "cr-mcp-web-gateway" = ["roles/run.invoker"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY       = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT       = "LANGSMITH_PROJECT"
+                MCP_WORKSPACE_URL       = "MCP_WORKSPACE_URL"
+                MCP_WEB_GATEWAY_URL     = "MCP_WEB_GATEWAY_URL"
+                AIDEVS_API_KEY          = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY           = "AIDEVS_VERIFY"
             }
         }
     }
