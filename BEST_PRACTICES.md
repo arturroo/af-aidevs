@@ -177,13 +177,55 @@ In production agent architectures, setting an unyielding loop cap (`recursion_li
 
 ---
 
-## 4. Optimization & Benchmark Log
+## 4. Vertex AI Quota Engineering & 429 Error Resilience
+
+### 4.1 Standard PayGo Architecture & Usage Tiers
+**Added:** 2026-09-16  
+**Reference:** [Google Cloud Standard PayGo](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/standard-paygo) & [Google Cloud Blog: Reduce 429 Errors](https://cloud.google.com/blog/products/ai-machine-learning/reduce-429-errors-on-vertex-ai)
+
+- **Tokens Per Minute (TPM) Baseline Over Static RPM:** In Google Vertex AI's Gemini Enterprise Agent Platform, consumption under Standard Pay-as-you-go (PayGo) is **NOT** governed by static, per-minute request limits (RPM). Instead, baseline throughput is allocated dynamically at the **Organization Level** based on rolling 30-day spend:
+  | Spend Tier (Rolling 30 Days) | Gemini Flash & Flash-Lite Baseline (TPM) | Gemini Pro Baseline (TPM) |
+  | :--- | :--- | :--- |
+  | **Tier 1 (\$10 – \$250)** | **2,000,000 TPM** | 500,000 TPM |
+  | **Tier 2 (\$250 – \$2,000)** | **4,000,000 TPM** | 1,000,000 TPM |
+  | **Tier 3 (\$2,000 – \$50,000)** | **10,000,000 TPM** | 2,000,000 TPM |
+  | **Tier 4 (> \$50,000)** | **50,000,000 TPM** | 10,000,000 TPM |
+
+- **What HTTP 429 `RESOURCE_EXHAUSTED` Actually Means:**  
+  Google's documentation explicitly clarifies: *A 429 error on Vertex AI does not mean you have exceeded a hard organizational quota.* It signifies **temporary high contention for a specific shared resource pool** in the multi-tenant cluster.
+- **The "Spike Trap" (Sub-Second Micro-Burst Throttling):**  
+  Even if your average usage is well below your Baseline TPM, sending requests in sharp, second-level spikes (e.g. 3 back-to-back LLM calls in 1.5 seconds during agent tool execution) triggers instantaneous burst throttling. Traffic smoothing is essential.
+- **Regional Deployment Realities (The "Zurich `europe-west6` 404" Phenomenon):**  
+  Frontier models (such as `gemini-3.8-flash`) are not deployed to smaller regional endpoints (`europe-west6`, `europe-west1`, and `us-central1` return `404 NOT_FOUND`). They route exclusively through **`location="global"`**. While `global` taps into a multi-region pool, all enterprise traffic worldwide routes through it, creating periodic contention spikes.
+
+### 4.2 The Five Pillars of Vertex AI 429 Resilience
+
+1. **Smart Retries with Exponential Backoff & Jitter:**  
+   Configure SDK retries (`HttpRetryOptions` in `google-genai` or ADK's `Reflect and Retry` plugin) to back off exponentially, preventing retry storms during temporary contention.
+2. **Global Model Routing:**  
+   Always target `location="global"` for frontier Gemini models to allow Google's control plane to dynamically route requests across the multi-region cluster with the highest instantaneous availability.
+3. **Context Caching:**  
+   Cache repetitive token blocks (e.g. system prompts, large technical documentation) to avoid reprocessing the same tokens and lower baseline TPM draw.
+4. **Deterministic Fast-Path with LLM Fallback (The Golden Rule):**  
+   *Never invoke an LLM for an operation that deterministic code (regex + relational SQL) can solve in $<1$ ms.*  
+   *Production Pattern from S03E04:* When an agent passes entity codes (`"WITR48, PANE24"`), parse candidate tokens using regex (`\b[A-Z0-9]{6}\b`) and validate them against the local catalog (`SELECT code FROM items WHERE code IN (...)`).  
+   - **Performance:** Slashes execution time from 13–34s (or 4 minutes of 429 retry backoff) down to **0.05 ms**.  
+   - **Cost & Reliability:** Consumes **0 tokens**, causes **0 quota strain**, and completely eliminates 429 cascading timeouts. If no valid codes exist, the service safely falls back to the LLM.
+5. **Traffic Smoothing & Model Tiering (`Flash-Lite`):**  
+   Avoid firing consecutive heavyweight LLM queries in tight synchronous loops within agent microservices. Use dedicated ultra-fast lightweight models (e.g. `gemini-3.5-flash-lite` @ `location="global"`) for high-throughput entity extraction and pre-flight intent parsing, while reserving frontier models (`gemini-3.8-flash`) for deep synthesis and constraint satisfaction. Implement automatic fallback between model tiers.
+
+---
+
+## 5. Optimization & Benchmark Log
 
 | Date | Topic | Optimization / Insight | Benefit |
 | :--- | :--- | :--- | :--- |
-| **2026-09-16** | Network vs Compute | Compressed (`zstd`) vs Raw Base64 Egress | **> 2,500x** cost savings on network egress in GCP. |
+| **2026-09-16** | Cloud Economics | Compressed (`zstd`) vs Raw Base64 Egress | **> 2,500x** cost savings on network egress in GCP (\$0.0000048 CPU vs \$0.012 egress). |
 | **2026-09-16** | MCP Architecture | Claim-Check Pattern via Temporary Signed URLs | 2-min TTL HTTPS access, zero IAM permissions needed for client. |
-| **2026-09-16** | LLM Observability | Tool Output Masking (`@traceable` + `callbacks=[]`) | Full trace graph visibility with zero payload bloat. |
+| **2026-09-16** | LLM Observability | Tool Output Masking (`@traceable` + `callbacks=[]`) | Full trace graph visibility with zero payload bloat in LangSmith/Langfuse. |
+| **2026-09-16** | Vertex AI Architecture | Standard PayGo Quotas & 429 Resilience | Shifted from static RPM to TPM Usage Tiers (\$10–\$250: 2M TPM Flash baseline). |
+| **2026-09-16** | Agent Performance | Fast-Path Regex + SQL Catalog Validation | Slashed Tool 2 latency from 4 min (429 backoff) to **0.05 ms** (zero token draw). |
+| **2026-09-16** | Model Tiering | Decoupled Extraction via `gemini-3.5-flash-lite` | Sub-second extraction with lower cost, high burst resilience, and automatic `gemini-3.8-flash` fallback. |
 | **2026-09-16** | Agent Budgeting | Rule of Thumb: $\text{max\_turns} = 2 \times \text{steps} + 2$ | Production loop cap preventing autonomous runaway. |
 | **2026-09-16** | Context Budgeting | Token Budgeting & Paging (1k–4k tokens) | Prevents *Lost in the Middle* attention degradation and 422 errors. |
 | **2026-09-16** | Vector Retrieval | Matryoshka Representation Learning (MRL) 768d | Compresses `gemini-embedding-2` to 768d with native `sqlite-vec` support at \$0.005 indexing cost. |

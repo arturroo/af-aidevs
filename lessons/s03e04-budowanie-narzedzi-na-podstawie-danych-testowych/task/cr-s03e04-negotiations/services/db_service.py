@@ -68,18 +68,55 @@ def extract_content_base64(raw_res: Any) -> str:
     )
 
 
+def _mask_json_or_text(text: str) -> str:
+    """Mask content_base64 or heavy base64 strings embedded inside JSON or plain text."""
+    if not isinstance(text, str) or len(text) < 200:
+        return text
+    if "content_base64" in text or "base64" in text:
+        try:
+            parsed = json.loads(text)
+            sanitized = mask_binary_output(parsed)
+            return json.dumps(sanitized, ensure_ascii=False)
+        except Exception:
+            pass
+    # Regex fallback for any "content_base64": "..." in raw string
+    pattern = r'("content_base64"\s*:\s*")([^"]{200,})(")'
+
+    def repl(m: re.Match) -> str:
+        b64_len = len(m.group(2))
+        est_bytes = (b64_len * 3) // 4
+        return f'{m.group(1)}<REDACTED_BASE64: {b64_len} chars, ~{est_bytes} bytes>{m.group(3)}'
+
+    return re.sub(pattern, repl, text)
+
+
 def mask_binary_output(output: Any) -> Any:
     """Mask heavy base64 strings in LangSmith / Langfuse traces, preserving metadata."""
     if isinstance(output, dict):
-        sanitized = dict(output)
-        for key in ("content_base64", "base64", "data"):
-            if key in sanitized and isinstance(sanitized[key], str) and len(sanitized[key]) > 200:
-                b64_len = len(sanitized[key])
+        sanitized = {}
+        for k, v in output.items():
+            if k in ("content_base64", "base64", "data") and isinstance(v, str) and len(v) > 200:
+                b64_len = len(v)
                 est_bytes = (b64_len * 3) // 4
-                sanitized[key] = f"<REDACTED_BASE64: {b64_len} chars, ~{est_bytes} bytes>"
+                sanitized[k] = f"<REDACTED_BASE64: {b64_len} chars, ~{est_bytes} bytes>"
+            elif isinstance(v, str):
+                sanitized[k] = _mask_json_or_text(v)
+            else:
+                sanitized[k] = mask_binary_output(v)
         return sanitized
-    if hasattr(output, "content") and isinstance(output.content, str) and len(output.content) > 500:
-        return f"<REDACTED_OUTPUT: {len(output.content)} chars>"
+
+    if isinstance(output, list):
+        return [mask_binary_output(item) for item in output]
+
+    if isinstance(output, str):
+        return _mask_json_or_text(output)
+
+    if hasattr(output, "content"):
+        c = getattr(output, "content")
+        if isinstance(c, str):
+            return _mask_json_or_text(c)
+        return mask_binary_output(c)
+
     return output
 
 
@@ -281,3 +318,18 @@ class DatabaseService:
             cursor = conn.cursor()
             cursor.execute(query, params)
             return [{"name": r["name"], "code": r["code"]} for r in cursor.fetchall()]
+
+    def filter_valid_item_codes(self, candidate_codes: List[str]) -> List[str]:
+        """Filter candidate codes, returning only those that genuinely exist in the items table."""
+        if not candidate_codes:
+            return []
+        unique = list(dict.fromkeys([c.strip().upper() for c in candidate_codes if c.strip()]))
+        if not unique:
+            return []
+        placeholders = ",".join("?" for _ in unique)
+        query = f"SELECT code FROM items WHERE code IN ({placeholders});"
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, unique)
+            valid = {r["code"] for r in cursor.fetchall()}
+            return [c for c in unique if c in valid]

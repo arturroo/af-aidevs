@@ -32,6 +32,14 @@ class ADKToolCaller:
             project=config.GOOGLE_CLOUD_PROJECT,
             location=config.GOOGLE_CLOUD_LOCATION,
         )
+        if config.EXTRACTION_LOCATION != config.GOOGLE_CLOUD_LOCATION:
+            self.extraction_client = genai.Client(
+                vertexai=True,
+                project=config.GOOGLE_CLOUD_PROJECT,
+                location=config.EXTRACTION_LOCATION,
+            )
+        else:
+            self.extraction_client = self.client
 
     async def extract_catalog_intent(self, user_query: str) -> Tool1PreFlightOutput:
         """Extract item technical entities from free-form user query via GenAI SDK."""
@@ -43,16 +51,34 @@ class ADKToolCaller:
             "Maksymalnie wyekstrahuj do 4 przedmiotów.\n\n"
             f"Zapytanie:\n{user_query}"
         )
-        response = await self.client.aio.models.generate_content(
-            model=config.GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=Tool1PreFlightOutput,
-                temperature=0.1,
-            ),
-        )
-        return Tool1PreFlightOutput.model_validate_json(response.text)
+        try:
+            response = await self.extraction_client.aio.models.generate_content(
+                model=config.EXTRACTION_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=Tool1PreFlightOutput,
+                    temperature=0.1,
+                ),
+            )
+            return Tool1PreFlightOutput.model_validate_json(response.text)
+        except Exception as e:
+            logger.warning(
+                "ADK extraction model %s failed: %s. Falling back to %s",
+                config.EXTRACTION_MODEL,
+                e,
+                config.GEMINI_MODEL,
+            )
+            response = await self.client.aio.models.generate_content(
+                model=config.GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=Tool1PreFlightOutput,
+                    temperature=0.1,
+                ),
+            )
+            return Tool1PreFlightOutput.model_validate_json(response.text)
 
     async def synthesize_catalog_response(
         self, post_input: Tool1PostFlightInput
@@ -89,16 +115,34 @@ class ADKToolCaller:
             "Jeśli brak kodów przedmiotów, zwróć pustą listę.\n\n"
             f"Tekst:\n{user_query}"
         )
-        response = await self.client.aio.models.generate_content(
-            model=config.GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=Tool2PreFlightOutput,
-                temperature=0.1,
-            ),
-        )
-        return Tool2PreFlightOutput.model_validate_json(response.text)
+        try:
+            response = await self.extraction_client.aio.models.generate_content(
+                model=config.EXTRACTION_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=Tool2PreFlightOutput,
+                    temperature=0.1,
+                ),
+            )
+            return Tool2PreFlightOutput.model_validate_json(response.text)
+        except Exception as e:
+            logger.warning(
+                "ADK extraction model %s failed in extract_item_codes: %s. Falling back to %s",
+                config.EXTRACTION_MODEL,
+                e,
+                config.GEMINI_MODEL,
+            )
+            response = await self.client.aio.models.generate_content(
+                model=config.GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=Tool2PreFlightOutput,
+                    temperature=0.1,
+                ),
+            )
+            return Tool2PreFlightOutput.model_validate_json(response.text)
 
 
 class ADKOrchestrator:

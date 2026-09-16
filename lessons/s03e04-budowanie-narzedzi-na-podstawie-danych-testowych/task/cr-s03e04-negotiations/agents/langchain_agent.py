@@ -21,16 +21,16 @@ from services.audit_service import AuditService, BigQueryCallbackHandler
 logger = logging.getLogger(__name__)
 
 
-def get_langchain_model():
+def get_langchain_model(model_name: Optional[str] = None, location: Optional[str] = None):
     """Create ChatGoogleGenerativeAI instance with low thinking level for low latency."""
     kwargs = {
-        "model": config.GEMINI_MODEL,
+        "model": model_name or config.GEMINI_MODEL,
         "temperature": 0.1,
         "thinking_level": config.THINKING_LEVEL,
     }
     if config.GOOGLE_CLOUD_PROJECT:
         kwargs["project"] = config.GOOGLE_CLOUD_PROJECT
-        kwargs["location"] = config.GOOGLE_CLOUD_LOCATION
+        kwargs["location"] = location or config.GOOGLE_CLOUD_LOCATION
         kwargs["vertexai"] = True
     return ChatGoogleGenerativeAI(**kwargs)
 
@@ -39,11 +39,12 @@ class LangChainToolCaller:
     """Handles structured single-turn LLM calls using LangChain 1.2.15."""
 
     def __init__(self):
-        self.model = get_langchain_model()
+        self.synthesis_model = get_langchain_model(config.GEMINI_MODEL, config.GOOGLE_CLOUD_LOCATION)
+        self.extraction_model = get_langchain_model(config.EXTRACTION_MODEL, config.EXTRACTION_LOCATION)
+        self.model = self.synthesis_model
 
     async def extract_catalog_intent(self, user_query: str) -> Tool1PreFlightOutput:
         """Extract item technical entities from free-form user query."""
-        structured_llm = self.model.with_structured_output(Tool1PreFlightOutput)
         messages = [
             SystemMessage(
                 content=(
@@ -56,13 +57,24 @@ class LangChainToolCaller:
             ),
             HumanMessage(content=user_query),
         ]
-        return await structured_llm.ainvoke(messages)
+        try:
+            structured_llm = self.extraction_model.with_structured_output(Tool1PreFlightOutput)
+            return await structured_llm.ainvoke(messages)
+        except Exception as e:
+            logger.warning(
+                "Extraction model %s failed: %s. Falling back to %s",
+                config.EXTRACTION_MODEL,
+                e,
+                config.GEMINI_MODEL,
+            )
+            structured_llm = self.synthesis_model.with_structured_output(Tool1PreFlightOutput)
+            return await structured_llm.ainvoke(messages)
 
     async def synthesize_catalog_response(
         self, post_input: Tool1PostFlightInput
     ) -> Tool1PostFlightOutput:
         """Synthesize concise recommendation with item codes <= 500 bytes."""
-        structured_llm = self.model.with_structured_output(Tool1PostFlightOutput)
+        structured_llm = self.synthesis_model.with_structured_output(Tool1PostFlightOutput)
         context_json = json.dumps(post_input.model_dump(), ensure_ascii=False)
         messages = [
             SystemMessage(
@@ -82,7 +94,6 @@ class LangChainToolCaller:
 
     async def extract_item_codes(self, user_query: str) -> Tool2PreFlightOutput:
         """Extract 6-character item codes from user query."""
-        structured_llm = self.model.with_structured_output(Tool2PreFlightOutput)
         messages = [
             SystemMessage(
                 content=(
@@ -94,7 +105,18 @@ class LangChainToolCaller:
             ),
             HumanMessage(content=user_query),
         ]
-        return await structured_llm.ainvoke(messages)
+        try:
+            structured_llm = self.extraction_model.with_structured_output(Tool2PreFlightOutput)
+            return await structured_llm.ainvoke(messages)
+        except Exception as e:
+            logger.warning(
+                "Extraction model %s failed in extract_item_codes: %s. Falling back to %s",
+                config.EXTRACTION_MODEL,
+                e,
+                config.GEMINI_MODEL,
+            )
+            structured_llm = self.synthesis_model.with_structured_output(Tool2PreFlightOutput)
+            return await structured_llm.ainvoke(messages)
 
 
 class LangChainOrchestrator:

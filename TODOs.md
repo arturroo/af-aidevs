@@ -52,3 +52,22 @@ Refactor `read_binary_file` (and related binary endpoints in `cr-mcp-workspace`)
    - **Zero IAM Overhead:** Consumers download the binary over standard HTTPS `GET` (via `curl` or `httpx`) without needing any GCP credentials or IAM permissions.
    - **Strict 2-Minute Exposure:** The signed URL expires in 120 seconds, returning `HTTP 403 Forbidden` thereafter.
    - **Zero Telemetry Bloat:** Observability platforms log only the lightweight URL ticket, completely eliminating megabyte dumps.
+
+---
+
+### [ARCH-002] Investigate Asynchronous Traffic Smoothing via `aiolimiter` for Vertex AI Microservices
+- **Status:** Backlog / Under Investigation
+- **Priority:** Medium (Resilience & Throughput Engineering)
+- **Target Component:** Shared agent microservices & tool pipelines (`af_aidevs`)
+- **Date Added:** 2026-09-16
+- **Assigned To:** Artur Fejklowicz & Joi
+- **Reference:** [BEST_PRACTICES.md](BEST_PRACTICES.md) Section 4.2 & [Google Cloud Blog: Reduce 429 Errors](https://cloud.google.com/blog/products/ai-machine-learning/reduce-429-errors-on-vertex-ai)
+
+#### Problem Description
+Under Vertex AI Standard PayGo, models (such as `gemini-3.8-flash` in `global`) are subject to sub-second micro-burst rate limiting. Even when average token throughput is well within the 2,000,000 TPM baseline, rapid consecutive LLM invocations in agent pipelines (e.g. pre-flight extraction immediately followed by post-flight synthesis within 1–2 seconds) trigger transient `429 RESOURCE_EXHAUSTED` errors. While hardcoded `sleep()` is an architectural anti-pattern that burns Cloud Run vCPU-seconds and threatens client timeouts, unmitigated bursts can induce retry storms.
+
+#### Research & Implementation Scope
+Investigate implementing a non-blocking asynchronous Token Bucket rate limiter using `aiolimiter` (or equivalent asyncio queue):
+1. **Zero-Wait Normal Operation:** When traffic is below burst thresholds, requests execute with zero artificial latency.
+2. **Graceful Queueing on Bursts:** Under sudden concurrency spikes, `AsyncLimiter(max_rate=N, time_period=M)` smoothly spreads requests across second intervals without thread blocking.
+3. **Benchmarking:** Measure tail latency ($P_{99}$) and 429 incidence on Cloud Run under concurrent agent load.

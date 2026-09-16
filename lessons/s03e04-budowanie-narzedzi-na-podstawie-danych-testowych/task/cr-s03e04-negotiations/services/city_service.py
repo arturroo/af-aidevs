@@ -1,6 +1,7 @@
 """City Service implementing Tool 2 (/api/find-cities-having-items-ids) relational set pipeline."""
 
 import logging
+import re
 from typing import Optional
 
 from agents.factory import get_tool_caller
@@ -46,17 +47,26 @@ class CityService:
         await self._verify_safety(user_query, session_id)
         tool_caller = get_tool_caller(backend)
 
-        # 1. Pre-flight 6-char code extraction
-        logger.info("Extracting item codes from: %s", user_query[:80])
-        pre_flight_output = await tool_caller.extract_item_codes(user_query)
-        item_codes = pre_flight_output.item_codes
+        # 1. Pre-flight 6-char code extraction: Fast-path regex + DB verification with LLM fallback
+        candidate_tokens = re.findall(r"\b[A-Z0-9]{6}\b", user_query.upper())
+        valid_codes = self.db_service.filter_valid_item_codes(candidate_tokens)
+
+        if valid_codes:
+            item_codes = valid_codes
+            reasoning = f"Fast-path regex verified {len(valid_codes)} item codes in catalog: {valid_codes}"
+            logger.info("[%s] Fast-path extracted item codes: %s", session_id, item_codes)
+        else:
+            logger.info("[%s] Extracting item codes via LLM from: %s", session_id, user_query[:80])
+            pre_flight_output = await tool_caller.extract_item_codes(user_query)
+            item_codes = pre_flight_output.item_codes
+            reasoning = pre_flight_output.reasoning
 
         await self.audit.log_event(
             session_id=session_id,
             actor="tool2_preflight",
             content=f"Extracted {len(item_codes)} item codes: {item_codes}",
             step_type="preflight_codes",
-            metadata={"reasoning": pre_flight_output.reasoning},
+            metadata={"reasoning": reasoning},
         )
 
         # 2. Fail-Fast Guardrail: If no valid codes detected, return helpful 404 guidance

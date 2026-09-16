@@ -61,6 +61,8 @@ BQ_AUDIT_TABLE = (
 
 # LLM Configuration (Default is Gemini 3.8 Flash on Vertex AI with thinking_level="low")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-3.8-flash"
+EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL") or "gemini-3.5-flash-lite"
+EXTRACTION_LOCATION = os.getenv("EXTRACTION_LOCATION") or "global"
 THINKING_LEVEL = os.getenv("THINKING_LEVEL") or "low"
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL") or "text-multilingual-embedding-002"
 LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT") or "af-aidevs"

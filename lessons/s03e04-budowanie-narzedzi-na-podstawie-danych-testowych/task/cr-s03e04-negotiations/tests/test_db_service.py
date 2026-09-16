@@ -157,3 +157,39 @@ async def test_download_gzip_decompression(monkeypatch, tmp_path):
     assert target_db.exists()
     assert target_db.read_bytes() == uncompressed_sqlite_bytes
 
+
+def test_filter_valid_item_codes(temp_test_db):
+    """Verify that filter_valid_item_codes retains only existing codes and rejects noise/invalid codes."""
+    db_service = DatabaseService(db_path=temp_test_db)
+    # temp_test_db contains: KBL001, MST001, TRB001
+    candidates = ["kbl001", "2026Q1", "MST001", "NONEXISTENT", "TRB001", ""]
+    valid = db_service.filter_valid_item_codes(candidates)
+    assert valid == ["KBL001", "MST001", "TRB001"]
+
+
+def test_mask_binary_output_nested_structures():
+    """Verify recursive masking across dicts, lists, and embedded JSON blocks."""
+    import json
+    from services.db_service import mask_binary_output
+
+    heavy_b64 = "A" * 1000
+
+    # 1. Direct dict
+    d1 = {"content_base64": heavy_b64, "file_path": "test.db"}
+    m1 = mask_binary_output(d1)
+    assert "<REDACTED_BASE64:" in m1["content_base64"]
+    assert m1["file_path"] == "test.db"
+
+    # 2. List of MCP text blocks with embedded JSON (LangChain MCP tool output format)
+    raw_mcp_output = [
+        {
+            "type": "text",
+            "text": json.dumps({"status": "success", "content_base64": heavy_b64}),
+        }
+    ]
+    m2 = mask_binary_output(raw_mcp_output)
+    assert isinstance(m2, list)
+    inner = json.loads(m2[0]["text"])
+    assert "<REDACTED_BASE64:" in inner["content_base64"]
+    assert inner["status"] == "success"
+

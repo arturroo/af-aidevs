@@ -762,15 +762,17 @@ variable "cr_names" {
             timeout       = "600s"
             use_pack      = false
             env           = {
-                BACKEND            = "langchain"
-                BQ_DATASET         = "s03e04"
-                BQ_TABLE           = "audit"
-                BQ_AUDIT_TABLE     = "af-aidevs.s03e04.audit"
-                EMBEDDING_MODEL    = "text-multilingual-embedding-002"
-                GEMINI_MODEL       = "gemini-3.8-flash"
-                THINKING_LEVEL     = "low"
-                LANGSMITH_TRACING  = "true"
-                LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
+                BACKEND             = "langchain"
+                BQ_DATASET          = "s03e04"
+                BQ_TABLE            = "audit"
+                BQ_AUDIT_TABLE      = "af-aidevs.s03e04.audit"
+                EMBEDDING_MODEL     = "text-multilingual-embedding-002"
+                GEMINI_MODEL        = "gemini-3.8-flash"
+                EXTRACTION_MODEL    = "gemini-3.5-flash-lite"
+                EXTRACTION_LOCATION = "global"
+                THINKING_LEVEL      = "low"
+                LANGSMITH_TRACING   = "true"
+                LANGSMITH_ENDPOINT  = "https://eu.api.smith.langchain.com"
             }
             roles         = ["roles/bigquery.jobUser", 
                              "roles/secretmanager.secretAccessor", 
