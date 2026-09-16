@@ -1,0 +1,5 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', '$_IMAGE', '--build-arg', 'UV_INDEX_GAR_PASSWORD=$_TOKEN', '.']
+images:
+- '$_IMAGE'

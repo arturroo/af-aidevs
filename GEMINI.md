@@ -4,6 +4,8 @@ This repository (`af-aidevs`) is the dedicated playground for the AI_Devs course
 
 ## Project-Specific Rules
 
+- **Engineering Best Practices & Architectural Optimizations:** All deep-dive technical trade-offs, financial/cost models (e.g. CPU compression vs Network Egress), and telemetry benchmarks are canonically recorded in [BEST_PRACTICES.md](BEST_PRACTICES.md). Architectural technical debt and refactoring backlog are tracked in [TODOs.md](TODOs.md).
+
 ### Naming Conventions (Google & DeepMind Best Practices)
 To keep the structure scalable, readable, and perfectly sorted (just as we do at Google):
 
@@ -44,6 +46,26 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
   - Pricing Reference: https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing?hl=en
   - Available models on Vertex AI: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/migrate
   - Model regional availability: https://docs.cloud.google.com/gemini-enterprise-agent-platform/resources/locations
+  - **Mandatory Vertex AI IAM Configuration (`vertexai=True`):** In all Cloud Run services and local executions leveraging Google Cloud IAM credentials (`roles/aiplatform.user`), LLM and embedding clients MUST explicitly configure Vertex AI mode. Omitting `vertexai=True` causes clients to default to the consumer Gemini Developer API and fail with: `Value error, API key required for Gemini Developer API. Provide api_key parameter or set GOOGLE_API_KEY/GEMINI_API_KEY`.
+    - **LangChain (`langchain-google-genai`):**
+      ```python
+      ChatGoogleGenerativeAI(
+          model=config.GEMINI_MODEL,
+          temperature=0.1,
+          project=config.GOOGLE_CLOUD_PROJECT,
+          location=config.GOOGLE_CLOUD_LOCATION,
+          vertexai=True,
+          thinking_level=config.THINKING_LEVEL,
+      )
+      ```
+    - **Google ADK & GenAI SDK (`google-genai`):**
+      ```python
+      genai.Client(
+          vertexai=True,
+          project=config.GOOGLE_CLOUD_PROJECT,
+          location=config.GOOGLE_CLOUD_LOCATION,
+      )
+      ```
 - Python package management: `uv` only. `pyproject.toml` only and must use precise library versions (no `^` operators) and dependencies should be sorted **alphabetically**.
 - **Python Version:** Always use `requires-python = "==3.13.5"` in `pyproject.toml` and in `.python-version` files to ensure consistent environment across all tasks. (Changed from 3.14.5 because 3.14 is not yet available as a stable release in `uv` and caused local build failures).
 - **Paths:** Always use `pathlib.Path` for file and directory operations. Avoid legacy `os.path` functions to ensure cross-platform compatibility and better readability.
@@ -52,7 +74,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 
 ### Task Specification Documents (Requirements & Decisions Workflow)
 To ensure solid software engineering principles and alignment before implementation, every lesson task follows this document lifecycle inside its `task/` directory by executing skills:
-0. **Lesson Initialization:** Sync latest `main`, create a dedicated lesson branch, and scaffold directory structure. Skill: `new-lesson-init`
+0. **Lesson Initialization & Pre-Flight:** Sync latest `main`, create a dedicated lesson branch, scaffold directory structure, download lesson markdown under its original source filename, generate `BRD.md`, and launch Socratic ADR reconnaissance with targeted questions. Skill: `init-lesson`
 1. **BRD (Business Requirements Document):** Generate a `BRD.md` file containing the extracted/translated task requirements from the lesson markdown. Skill: create-brd
 2. **ADR (Architecture Decision Record):** Generate an `ADR.md` file detailing architectural and design choices (such as technologies used, caching strategies, model settings, and exception handling). Skill: create-adr
 3. **PRD (Product Requirements Document):** Generate a `PRD.md` file based on the BRD and ADR that serves as the final specification. Skill: create-prd
@@ -70,7 +92,8 @@ To ensure solid software engineering principles and alignment before implementat
 - **Environment Variables Parsing:** Always use `os.getenv("VAR") or "default"` in Python instead of `os.environ.get("VAR", "default")`. This protects against accidentally exported empty strings from `.env` files overriding the defaults.
 - **LangSmith:** For simplicity, we use only one project in LangSmith across all services, referenced via the `LANGSMITH_PROJECT` environment variable.
 - **Model Armor:** Services using Model Armor for safety verification must have the `MODEL_ARMOR_URL` environment variable set. In GCP, this is retrieved from Secret Manager. Locally, it must be set in the `.env` file.
-- **Strictly Relative Markdown Links in Repository Files:** In all markdown documents in the repository (e.g., `BRD.md`, `ADR.md`, `PRD.md`, `README.md`), always use strictly relative links (e.g. `[BRD.md](BRD.md)` or `[Guide](../../../docs/...)`) instead of absolute local file paths (`file:///c:/Users/...`). This strictly protects privacy by preventing local Windows OS usernames and machine paths from being leaked to public GitHub repositories, and guarantees that links render and navigate correctly on GitHub.com.
+- **Strictly Relative Markdown Links in Repository Files:** In all markdown documents in the repository (e.g., `BRD.md`, `ADR.md`, `PRD.md`, `README.md`, `lab-report-and-conclusions.md`), always use strictly relative links (e.g. `[BRD.md](BRD.md)` or `[Guide](../../../docs/...)`) instead of absolute local file paths (`file:///c:/Users/...`). This strictly protects privacy by preventing local Windows OS usernames and machine paths from being leaked to public GitHub repositories, and guarantees that links render and navigate correctly on GitHub.com.
+- **Zero-Pollution Telemetry & Logging (No Binary/Base64 Dumps in Logs or LLM Traces):** NEVER log raw Base64 strings, binary file payloads, database dumps, or multi-megabyte contents to application logs (`stdout`/`stderr`), Cloud Logging, BigQuery audit tables, LLM observability platforms (**LangSmith**, **Langfuse**), exceptions (`ValueError`, `HTTPException`), or API error responses. To maintain full trace visibility while preventing telemetry bloat, **always use output masking as the default standard** for large binary/Base64 tool outputs: wrap the tool call with `@traceable(name="...", run_type="tool", process_outputs=mask_binary_output)` while passing `config={"callbacks": []}` to the underlying `tool.ainvoke`. This guarantees the tool execution, input parameters, latency, and status remain explicitly visible in LangSmith/Langfuse, while the heavy `content_base64` payload is safely masked to concise metadata (e.g. `<REDACTED_BASE64: 2841920 chars, ~2.1 MB>`). When logging binary file operations, log strictly metadata: `file_path`, MIME type, size in bytes, and SHA-256 checksum. All exception messages and audit log event contents MUST truncate dynamic tool outputs/errors to a safe maximum (e.g. `[:300]`).
 
 ### Infrastructure (Terraform)
 - **Scope:** All Terraform code is centralized in the `/terraform` folder using standard Google Cloud Terraform module structures.
@@ -162,7 +185,17 @@ To test a service locally that depends on the private `af_aidevs` package in Art
     - **Design Pattern: Standard Shared Package (`af_aidevs`):** To avoid code duplication, eliminate cold-start drift, and guarantee architectural consistency across lessons, all lesson tasks, agents, and microservices MUST rely on the central `af_aidevs` shared package (deployed to Artifact Registry / resolved via `uv`) rather than reimplementing boilerplate clients. Specifically:
       - **BigQuery Auditing:** Always use `af_aidevs.audit.bigquery` (`AuditService`, `BigQueryCallbackHandler`) for structured telemetry logging and streaming audit callbacks to `audit` tables.
       - **MCP Connectivity:** Always use `af_aidevs.clients.mcp` (`get_all_mcp_tools`, `create_mcp_client`) for establishing multi-server MCP connections over HTTP with built-in `GoogleOIDCAuth` and `X-Session-ID` header propagation. Both `cr-mcp-workspace` and `cr-mcp-web-gateway` MUST be connected by default in every agent session, ensuring both external web access and GCS session workspace persistence are available out-of-the-box. Never re-implement MCP connection logic, custom OIDC auth wrappers, or manual partial `server_configs` dictionaries in lesson task folders.
-      - **Model Armor:** Always use `af_aidevs.model_armor` for Zero-Trust prompt sanitization, jailbreak protection, and safety verification.
+      - **Model Armor:** Always use `af_aidevs.model_armor` for Zero-Trust prompt sanitization, jailbreak protection, and safety verification. The canonical verification API is `await model_armor.verify(text: str, policy_context: str, session_id: str) -> bool`:
+        ```python
+        from af_aidevs import model_armor
+
+        # Verifies prompt safety against cr-model-armor policy; returns True if safe, False if flagged
+        is_safe = await model_armor.verify(
+            text=user_query,
+            policy_context="task_domain_context",
+            session_id=session_id,
+        )
+        ```
       - **Prompt Management:** Always use `af_aidevs.utils.prompts.load_system_prompt` to load `system_prompt.md` with YAML frontmatter.
       - **Base Schemas:** Always utilize common schema models from `af_aidevs.schemas.common` (such as `AgentResponseEnvelope[T]`) to standardize envelope structures, metadata fields, and audit reasoning across task-specific `schemas.py`.
     - **Design Pattern: get_current_date():** To ensure optimal LLM prompt caching (Context Caching), do NOT hardcode the date in the system prompt. Instead, always provide a `get_current_date()` tool that the agent can call when temporal context is needed.
@@ -205,6 +238,9 @@ To ensure production-grade stability, clean architecture, and deterministic agen
 - **Anti-Pattern: Silent Local Storage Fallback (Workspace Integrity):** In Cloud Run microservices, domain persistence operations (such as saving `run_notes.txt` or session artifacts) MUST NEVER silently fall back to standard Python `open(path, "w")` on the container's ephemeral disk if the remote MCP workspace is uninitialized or fails. Silent fallbacks mask missing MCP tool registrations. If `cr-mcp-workspace` is unreachable or unconfigured, the service MUST raise an explicit `RuntimeError` or `ToolException` to fail fast during development and testing.
 - **Anti-Pattern: Opaque In-Tool LLM Invocations (Trace Blindness):** Making direct, untraced LLM calls inside tool execution functions without attaching tracing or telemetry.
   - *Proper Pattern:* Either model the worker as a true Subagent with its own callback graph, or decorate the direct LLM function with `@traceable(run_type="llm", name=...)` from `langsmith.run_helpers` to preserve full visibility into prompts, responses, latency, and token consumption in LangSmith.
+- **Anti-Pattern: Raw Binary / Base64 Log Pollution:** Dumping raw Base64 strings, file byte dumps, or binary blobs into error messages, stdout, or BigQuery audit logs.
+  - *Risks:* Explodes Cloud Logging and BigQuery storage costs, breaches HTTP response size limits (e.g., sending 13MB 500 error responses), degrades trace inspection in LangSmith/Cloud Logging, and leaks entire databases or private assets into observability systems.
+  - *Proper Pattern:* Strictly log metadata only (`file_path`, `size_bytes`, `mime_type`, `sha256`) and enforce strict truncation (`error[:300]`, `output[:300]`) across all callback handlers and exception formatters.
 
 ### Cloud Run Gold Standards
 To ensure consistent deployment and runtime behavior across all microservices:
@@ -217,7 +253,7 @@ To ensure consistent deployment and runtime behavior across all microservices:
   4. **`.dockerignore` & `.gcloudignore`**: Excluding `.venv/`, `__pycache__/`, `*.pyc`, `.git/`, `.env`.
   5. **`main.py` Entrypoint**: Exposing a FastAPI `app` with `GET /health` and `POST /run` endpoints alongside CLI execution.
 - **Self-Contained Container Context (No Parent Directory Lookups):** Docker builds in Cloud Run are strictly confined to the service directory (`/app`). Code MUST NOT traverse to parent directories (`../`) to find assets. Any immutable schematics or seed fixtures must be located within the service directory or resolved via the OverlayFS shared layer (`gs://af-aidevs-workspaces/shared/{lesson_id}/`).
-- **Explicit Vertex AI IAM Mode:** When using `ChatGoogleGenerativeAI` or `google-genai` on Cloud Run without an API key, always pass `vertexai=True` and `project=...` to ensure authentication via Cloud IAM Service Account (`roles/aiplatform.user`) rather than consumer Gemini Developer API keys.
+- **Explicit Vertex AI IAM Mode (`vertexai=True`):** When deploying to Cloud Run, services rely exclusively on Google Cloud IAM (`roles/aiplatform.user` attached to the runtime service account) rather than consumer Gemini Developer API keys (`GOOGLE_API_KEY`). Both `ChatGoogleGenerativeAI` (LangChain) and `genai.Client` (Google GenAI SDK / ADK) MUST explicitly be initialized with `vertexai=True`, `project=config.GOOGLE_CLOUD_PROJECT`, and `location=config.GOOGLE_CLOUD_LOCATION`. Omitting `vertexai=True` in LangChain triggers a Pydantic validation failure requiring an API key.
 - **Dependencies:** For web services (FastAPI/Uvicorn/FastMcp), always use these precise versions in `pyproject.toml` to ensure stability, if not specified otherwise:
   - `fastapi==0.136.1`
   - `fastmcp==3.2.4`
