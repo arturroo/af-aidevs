@@ -39,7 +39,14 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
   - **Mandatory Container Scaffolding Standards:** To prevent **Cross-Platform Venv Poisoning** (where a local Windows `.venv` with `.exe` binaries is copied into a Linux container via `COPY . .`, causing Cloud Run `Error code 9` on `PORT=8080`) and to eliminate multi-gigabyte upload bottlenecks in `gcloud builds submit`, EVERY Cloud Run service folder MUST include from day one:
     - `.dockerignore`: Strictly ignoring `.git`, `.venv`, `__pycache__`, `*.pyc`, `.env`, `.env.*`, and `tests`.
     - `.gcloudignore`: Strictly ignoring `.gcloudignore`, `.git`, `.gitignore`, `.venv`, `__pycache__`, `*.pyc`, `.env`, `.env.*`, and `tests`.
-    - `cloudbuild.yaml`: Standardized manifest using `gcr.io/cloud-builders/docker` with `--build-arg UV_INDEX_GAR_PASSWORD=$_TOKEN`.
+    - `cloudbuild.yaml`: Standardized manifest using `gcr.io/cloud-builders/docker` matching Terraform's `modules/cloud_run/main.tf` substitutions (`--substitutions=_IMAGE=...,_TOKEN=...`). The manifest MUST strictly use `$_IMAGE` (NEVER `$_IMAGE_NAME`) and `--build-arg UV_INDEX_GAR_PASSWORD=$_TOKEN`:
+      ```yaml
+      steps:
+      - name: 'gcr.io/cloud-builders/docker'
+        args: ['build', '-t', '$_IMAGE', '--build-arg', 'UV_INDEX_GAR_PASSWORD=$_TOKEN', '.']
+      images:
+      - '$_IMAGE'
+      ```
     - `Dockerfile`: Using official `python:3.13.5-slim`, `ENV PYTHONUNBUFFERED=1`, `COPY pyproject.toml ./`, `RUN uv sync`, `COPY . .`, and `CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]`.
 - LLM Default: Starting **2026-09-07** (from lesson `s02e04` onwards), we use **Gemini 3.8 Flash** (`gemini-3.8-flash`) on **Vertex AI** via the modern `google-genai` SDK and `langchain-google-genai` as our primary workhorse model. Default location is `GOOGLE_CLOUD_LOCATION=global`, with default thinking level set to `thinking_level="low"` (or `types.ThinkingLevel.LOW`) to minimize latency and token overhead.
   - Model Guide & Reference: [Gemini 3.8 Flash Developer Guide](docs/vertex-ai/gemini-3.8-flash-guide.md)
@@ -69,6 +76,10 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - Python package management: `uv` only. `pyproject.toml` only and must use precise library versions (no `^` operators) and dependencies should be sorted **alphabetically**.
 - **Python Version:** Always use `requires-python = "==3.13.5"` in `pyproject.toml` and in `.python-version` files to ensure consistent environment across all tasks. (Changed from 3.14.5 because 3.14 is not yet available as a stable release in `uv` and caused local build failures).
 - **Paths:** Always use `pathlib.Path` for file and directory operations. Avoid legacy `os.path` functions to ensure cross-platform compatibility and better readability.
+- **Code Quality, Linting & Formatting (Ruff):** We use **Ruff** as the official, unified linter and code formatter across all microservices and scripts. Before committing, deploying, or testing, always run:
+  - `uvx ruff check . --exclude .venv --fix` to enforce modern Python 3.13 idioms (`dict` instead of `typing.Dict`, `X | None` instead of `Optional[X]`, and automatic import sorting).
+  - `uvx ruff format . --exclude .venv` to ensure consistent code styling.
+- **Static Type Checking (mypy):** Run static typing validation on all schemas, services, and agent modules using `uvx mypy . --ignore-missing-imports --exclude .venv`. All tool inputs, responses, and API payloads must have strict, unambiguous type annotations.
 
 - **Monolith Scaling:** If the `af_aidevs` shared package exceeds 10 modules, it must be thematically split into separate packages (e.g., `af_aidevs_x`, `af_aidevs_y`) to maintain small footprints and fast cold starts in Cloud Run. We use "Podejście A" with empty `__init__.py` files to prevent eager loading of heavy dependencies.
 
@@ -80,6 +91,31 @@ To ensure solid software engineering principles and alignment before implementat
 3. **PRD (Product Requirements Document):** Generate a `PRD.md` file based on the BRD and ADR that serves as the final specification. Skill: create-prd
 4. **Implementation & Plan:** Implement the PRD, including container scaffolding, domain logic, tests, and Terraform registration (`terraform/variables.tf`). Skill: implement-prd.
 
+### Pre-Flight Quality Gate (Pre-Commit & Pre-Deployment Checklist)
+Before committing changes, opening a PR, or running `terraform apply`, EVERY lesson microservice MUST pass this 5-point quality gate:
+1. **Linter & Code Modernization (`ruff check`):**
+   ```powershell
+   uvx ruff check . --exclude .venv --fix
+   ```
+2. **Code Formatter (`ruff format`):**
+   ```powershell
+   uvx ruff format . --exclude .venv
+   ```
+3. **Static Type Checking (`mypy`):**
+   ```powershell
+   uvx mypy . --ignore-missing-imports --exclude .venv
+   ```
+4. **Automated Unit & Contract Tests (`pytest`):**
+   ```powershell
+   uv run pytest -v
+   ```
+5. **Scaffolding & Secret Manager Alignment:**
+   - **Cloud Build Substitution Parity:** `cloudbuild.yaml` MUST strictly use `$_IMAGE` and `--build-arg UV_INDEX_GAR_PASSWORD=$_TOKEN` (NEVER `$_IMAGE_NAME`).
+   - **Ignore Parity:** `.dockerignore` and `.gcloudignore` must exclude `.git`, `.venv`, `.pytest_cache`, `__pycache__`, and `tests`.
+   - **Dependency Parity:** `pyproject.toml` and `.python-version` must pin `requires-python = "==3.13.5"` and alphabetically sorted dependencies.
+   - **Secret Parity:** Verify every secret in `terraform/variables.tf` under `cr_names.<service>.secrets` exists in Secret Manager (`gcloud secrets list`).
+   - **Zero Hardcoded URLs:** Ensure zero hardcoded external API URLs in `config.py`.
+
 
 ### Security & Privacy
 - **NEVER hardcode external API URLs** in source code, markdown documents, comments, or PRDs. This includes any URLs pointing to course platform APIs or third-party services (e.g., verification, location, access-level endpoints).
@@ -87,7 +123,7 @@ To ensure solid software engineering principles and alignment before implementat
 - The `AIDEVS_API_KEY` secret itself must be stored in GCP Secret Manager for deployed services, and in a local `.env` file for local development only.
 - When writing documentation or PRDs, refer to endpoints as their env var name only. Example: use `$AIDEVS_API_VERIFY` — never paste the actual URL.
 - This rule exists to respect the course authors' intellectual property and prevent API endpoint leakage in public repositories.
-- **NEVER expose or commit course flags (`{FLG:...}`) publicly:** Course flags must NEVER appear in Git commit messages, public documentation, PR descriptions, or source code comments. Always redact or reference them abstractly (e.g. `{FLG:...}` or `[REDACTED_FLAG]`) when committing changes or writing shared notes to respect academic integrity and prevent answer leakage.
+- **NEVER expose or commit course flags (`{FLG:...}`) publicly:** Course flags must NEVER appear in Git commit messages, public documentation, PR descriptions, or source code comments. Always redact or reference them abstractly (e.g. `{FLG:...}` or `[REDACTED_FLAG]`) when committing changes or writing shared notes to respect academic integrity and prevent answer leakage. *(Exception: `run_notes.txt` on Artur's private GCS workspace MUST contain unanonymized, raw flags and execution details for debugging and auditability).*
 - **Precise File-by-File Git Staging (No `git add .`):** When asked by Artur to stage, commit, or push changes to Git/GitHub, NEVER use blind catch-all commands like `git add .` or `git add -A`. Always inspect `git status` or `git status --porcelain` first to review all modified and untracked files, and stage files explicitly file-by-file (or by exact target directories). This ensures that unrelated scratch scripts, temporary images, or accidental credentials are never staged or committed.
 - **Environment Variables Parsing:** Always use `os.getenv("VAR") or "default"` in Python instead of `os.environ.get("VAR", "default")`. This protects against accidentally exported empty strings from `.env` files overriding the defaults.
 - **LangSmith:** For simplicity, we use only one project in LangSmith across all services, referenced via the `LANGSMITH_PROJECT` environment variable.
@@ -199,7 +235,7 @@ To test a service locally that depends on the private `af_aidevs` package in Art
       - **Prompt Management:** Always use `af_aidevs.utils.prompts.load_system_prompt` to load `system_prompt.md` with YAML frontmatter.
       - **Base Schemas:** Always utilize common schema models from `af_aidevs.schemas.common` (such as `AgentResponseEnvelope[T]`) to standardize envelope structures, metadata fields, and audit reasoning across task-specific `schemas.py`.
     - **Design Pattern: get_current_date():** To ensure optimal LLM prompt caching (Context Caching), do NOT hardcode the date in the system prompt. Instead, always provide a `get_current_date()` tool that the agent can call when temporal context is needed.
-    - **Design Pattern: run_notes.txt Execution Summary:** Whenever appropriate and sensible, task agents should write an execution summary and outcome report to `run_notes.txt` in their session workspace using the MCP `write_file` tool. This summary provides immediate human inspection and persistent auditability of task status, execution timestamp, framework/backend used, and retrieved course flags (e.g. `{FLG:...}`).
+    - **Design Pattern: run_notes.txt Execution Summary:** Whenever appropriate and sensible, task agents should write an execution summary and outcome report to `run_notes.txt` in their session workspace using the MCP `write_file` tool. This summary provides immediate human inspection and persistent auditability of task status, execution timestamp, framework/backend used, and retrieved course flags (e.g. `{FLG:...}`). **Mandatory Unanonymized Storage:** `run_notes.txt` MUST contain unanonymized, raw data (including the verbatim course flag `{FLG:...}` and full execution context). Because it is stored strictly on Artur's private Google Cloud Storage session workspace (`gs://af-aidevs-workspaces/`), full unredacted details are safe, intended, and required for debugging and verification. Redaction (`[REDACTED_FLAG]`) applies strictly to public Git commits, public repository documentation, and pull requests.
     - **Design Pattern: Multi-Layered Workspace (OverlayFS / UnionFS):** To enforce Zero-Trust isolation and prevent asset duplication across sessions, workspace storage (`cr-mcp-workspace`) uses a dual-layer Virtual File System:
       - **Lower Layer (Read-Only Shared):** `gs://af-aidevs-workspaces/shared/{lesson_id}/` holding static immutable blueprints, reference schematics, and common task fixtures.
       - **Upper Layer (Read-Write Session):** `gs://af-aidevs-workspaces/{caller_identity}/{session_id}/` holding runtime ephemeral artifacts.
