@@ -1,0 +1,356 @@
+import json
+import logging
+import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from langchain.agents import create_agent
+from langchain.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from af_aidevs.utils.prompts import load_system_prompt
+
+import config
+from agents.base import BaseNavigationAgent
+from schemas import (
+    Coordinate,
+    InvokeRemoteToolInput,
+    PlanRouteInput,
+    RunTaskResponse,
+    SearchToolsInput,
+    TerrainMap,
+    VehicleSpec,
+)
+from services.audit_service import AuditService, BigQueryCallbackHandler
+from services.mcp_service import MCPService
+from services.solver_service import SolverService
+from services.tool_discovery_service import ToolDiscoveryService
+from services.verification_service import VerificationService
+
+logger = logging.getLogger("agents.langchain")
+
+
+class LangChainNavigationAgent(BaseNavigationAgent):
+    """LangChain 1.2.15 implementation for task savethem using Gemini 3.8 Flash."""
+
+    def __init__(self):
+        self.prompt_config = load_system_prompt(
+            base_dir=str(Path(__file__).parent.parent)
+        )
+        self.audit = AuditService(
+            dataset_id=config.BQ_DATASET, table_id=config.BQ_TABLE
+        )
+        self.mcp = MCPService()
+        self.discovery = ToolDiscoveryService(mcp_service=self.mcp)
+        self.solver = SolverService()
+        self.verification = VerificationService(mcp_service=self.mcp)
+
+        os.environ["LANGSMITH_PROJECT"] = config.LANGSMITH_PROJECT
+
+        self.llm = ChatGoogleGenerativeAI(
+            model=self.prompt_config.model or config.GEMINI_MODEL,
+            temperature=self.prompt_config.temperature or 0.1,
+            project=config.GOOGLE_CLOUD_PROJECT,
+            location=self.prompt_config.location or config.GOOGLE_CLOUD_LOCATION,
+            vertexai=True,
+            thinking_level=config.THINKING_LEVEL,
+            include_thoughts=False,
+        )
+
+    def _create_tools(self, session_id: str, state_tracker: Dict[str, Any]):
+        discovery = self.discovery
+        solver = self.solver
+        verification = self.verification
+        mcp = self.mcp
+
+        @tool(args_schema=SearchToolsInput)
+        async def search_tools(reasoning: str, query: str) -> str:
+            """Searches for available operational domain tools via $AIDEVS_API_TOOLSEARCH using an English query."""
+            try:
+                tools = await discovery.search_tools(session_id=session_id, query=query)
+                return json.dumps(
+                    {
+                        "count": len(tools),
+                        "tools": [
+                            {
+                                "name": t.name,
+                                "endpoint": f"/api/{t.name}",
+                                "description": t.description,
+                            }
+                            for t in tools
+                        ],
+                        "hint": "Tools discovered! Query them with invoke_remote_tool using their tool_name (e.g. 'maps', 'wehicles').",
+                    },
+                    ensure_ascii=False,
+                )
+            except Exception as e:
+                logger.error(f"Error in search_tools: {e}")
+                return json.dumps({"status": "error", "message": str(e)})
+
+        @tool(args_schema=InvokeRemoteToolInput)
+        async def invoke_remote_tool(
+            reasoning: str,
+            tool_name: str,
+            query: str,
+            endpoint_url: Optional[str] = None,
+        ) -> str:
+            """Sends a targeted English query to a discovered domain tool via MCP Web Gateway."""
+            try:
+                res = await discovery.invoke_remote_tool(
+                    session_id=session_id,
+                    tool_name=tool_name,
+                    query=query,
+                    endpoint_url=endpoint_url,
+                )
+                has_map = discovery.cached_terrain is not None
+                known_vehicles = [v.name for v in discovery.cached_vehicles]
+                if discovery.cached_foot_spec:
+                    known_vehicles.append(discovery.cached_foot_spec.name)
+
+                hint = f"Environment status: map_cached={has_map}, known_vehicles={known_vehicles}. When ready, call plan_and_verify_route."
+
+                return json.dumps(
+                    {
+                        "tool_name": tool_name,
+                        "response": res,
+                        "map_cached": has_map,
+                        "known_vehicles": known_vehicles,
+                        "hint": hint,
+                    },
+                    ensure_ascii=False,
+                )
+            except Exception as e:
+                logger.error(f"Error in invoke_remote_tool: {e}")
+                return json.dumps({"status": "error", "message": str(e)})
+
+        @tool(args_schema=PlanRouteInput)
+        async def plan_and_verify_route(
+            reasoning: str,
+            selected_vehicle: Optional[str] = None,
+            vehicle_specs: Optional[List[Dict[str, Any]]] = None,
+            terrain_grid: Optional[List[List[str]]] = None,
+        ) -> str:
+            """Solves the optimal route across the 10x10 terrain grid using Multi-State A* and submits it to Centrala for verification.
+
+            Args:
+                reasoning: Justification explaining the chosen parameters and confirming terrain/vehicles are analyzed.
+                selected_vehicle: Optional vehicle preferred by the agent ('car', 'foot'). If None, solver evaluates all options.
+                vehicle_specs: Optional list of vehicle dicts extracted by the agent from remote tools (e.g. [{'name': 'car', 'fuel_per_move': 0.7, 'food_per_move': 1.0}]). Directly feeds the deterministic solver.
+                terrain_grid: Optional 10x10 matrix of terrain tiles if extracted directly from the map tool response.
+            """
+            try:
+                # 1. Resolve terrain
+                terrain = discovery.cached_terrain
+                if terrain_grid and len(terrain_grid) == 10:
+                    start_coord = Coordinate(x=0, y=7)
+                    dest_coord = Coordinate(x=8, y=4)
+                    for r_idx, row in enumerate(terrain_grid):
+                        for c_idx, cell in enumerate(row):
+                            c_str = str(cell).strip().upper()
+                            if c_str == "S":
+                                start_coord = Coordinate(x=c_idx, y=r_idx)
+                            elif c_str == "G":
+                                dest_coord = Coordinate(x=c_idx, y=r_idx)
+                    terrain = TerrainMap(grid=terrain_grid, start=start_coord, destination=dest_coord)
+
+                if not terrain:
+                    return json.dumps({
+                        "status": "error",
+                        "message": "Terrain map not loaded. Please invoke the map tool first or pass terrain_grid.",
+                    })
+
+                # 2. Resolve vehicles: agent-provided specs take absolute priority
+                vehicles: List[VehicleSpec] = []
+                foot: Optional[VehicleSpec] = discovery.cached_foot_spec
+                if vehicle_specs:
+                    for v_dict in vehicle_specs:
+                        if isinstance(v_dict, dict):
+                            v_name = str(v_dict.get("name", "vehicle")).lower()
+                            trav = v_dict.get("traversable_tiles")
+                            if not trav:
+                                if v_name in {"walk", "foot", "walking"}:
+                                    trav = [".", "s", "g", "plain", "road", "grass", "sand", "base", "city", "tree", "forest", "w", "water", "river"]
+                                else:
+                                    trav = [".", "s", "g", "plain", "road", "grass", "sand", "base", "city"]
+                            v_spec = VehicleSpec(
+                                name=v_name,
+                                fuel_per_move=float(v_dict.get("fuel_per_move", v_dict.get("fuel", 0.0))),
+                                food_per_move=float(v_dict.get("food_per_move", v_dict.get("food", 1.0))),
+                                speed=float(v_dict.get("speed", 1.0)),
+                                traversable_tiles=trav,
+                            )
+                            if v_name in {"walk", "foot", "walking"}:
+                                foot = v_spec
+                            vehicles.append(v_spec)
+                        elif isinstance(v_dict, VehicleSpec):
+                            if v_dict.name.lower() in {"walk", "foot", "walking"}:
+                                foot = v_dict
+                            vehicles.append(v_dict)
+                elif discovery.cached_vehicles:
+                    vehicles = discovery.cached_vehicles
+
+                # Solve route
+                plan = solver.find_best_route(
+                    terrain=terrain,
+                    vehicles=vehicles,
+                    foot_spec=foot,
+                    initial_fuel=config.INITIAL_FUEL,
+                    initial_food=config.INITIAL_FOOD,
+                )
+
+                if not plan or not plan.get("success"):
+                    return json.dumps({
+                        "status": "failed",
+                        "message": "Deterministic solver could not find a path within 10 fuel and 10 food with available vehicles/terrain.",
+                    })
+
+                itinerary = plan["itinerary"]
+                state_tracker["itinerary"] = itinerary
+                state_tracker["fuel_remaining"] = plan["fuel_remaining"]
+                state_tracker["food_remaining"] = plan["food_remaining"]
+                state_tracker["steps_count"] = plan["steps"]
+
+                # Submit to Centrala verification
+                verify_res = await verification.submit_route(
+                    session_id=session_id, itinerary=itinerary
+                )
+
+                flag = verify_res.get("flag")
+                if flag:
+                    state_tracker["flag"] = flag
+                    logger.info(f"Course flag captured: {flag}")
+
+                return json.dumps(
+                    {
+                        "status": "success" if verify_res.get("success") else "failed",
+                        "vehicle_used": plan["vehicle"],
+                        "steps": plan["steps"],
+                        "fuel_remaining": plan["fuel_remaining"],
+                        "food_remaining": plan["food_remaining"],
+                        "verification_message": verify_res.get("message"),
+                        "flag": flag,
+                    },
+                    ensure_ascii=False,
+                )
+            except Exception as e:
+                logger.error(f"Error in plan_and_verify_route: {e}")
+                return json.dumps({"status": "error", "message": str(e)})
+
+        @tool
+        async def write_file(file_path: str, content: str, reasoning: str) -> str:
+            """Saves a markdown or text file into cr-mcp-workspace for session persistence."""
+            res = await mcp.write_file(
+                session_id=session_id,
+                file_path=file_path,
+                content=content,
+                reasoning=reasoning,
+            )
+            return json.dumps(res)
+
+        @tool
+        async def read_file(file_path: str, reasoning: str) -> str:
+            """Reads a file from cr-mcp-workspace."""
+            res = await mcp.read_file(
+                session_id=session_id, file_path=file_path, reasoning=reasoning
+            )
+            return json.dumps(res)
+
+        tools = [
+            search_tools,
+            invoke_remote_tool,
+            plan_and_verify_route,
+            write_file,
+            read_file,
+        ]
+
+        for t in tools:
+            t.handle_tool_error = True
+
+        return tools
+
+    async def execute(
+        self,
+        session_id: str,
+        force_refresh: bool = False,
+        recursion_limit: int = 30,
+    ) -> RunTaskResponse:
+        logger.info(
+            f"Starting LangChain execution for session {session_id} using {config.GEMINI_MODEL} (recursion_limit={recursion_limit})"
+        )
+
+        state_tracker: Dict[str, Any] = {
+            "flag": None,
+            "itinerary": [],
+            "fuel_remaining": 0.0,
+            "food_remaining": 0.0,
+            "steps_count": 0,
+        }
+
+        # 1. Audit Session Start
+        await self.audit.log_event(
+            session_id=session_id,
+            actor="system",
+            content=f"Initialized LangChain session {session_id} for task savethem (recursion_limit={recursion_limit})",
+            step_type="SESSION_START",
+            metadata={"model": config.GEMINI_MODEL, "backend": "langchain", "recursion_limit": recursion_limit},
+        )
+
+        tools = self._create_tools(session_id=session_id, state_tracker=state_tracker)
+        bq_callback = BigQueryCallbackHandler(
+            audit_service=self.audit, session_id=session_id
+        )
+
+        agent_graph = create_agent(
+            model=self.llm,
+            tools=tools,
+            system_prompt=self.prompt_config.system_prompt,
+        )
+
+        user_goal = (
+            "You are tasked with safely navigating a human envoy to the survivor settlement of Skolwin across an unknown 10x10 terrain grid.\n"
+            "Constraints: initial budget is exactly 10 food portions and 10 fuel units.\n"
+            "1. Discover available tools using search_tools.\n"
+            "2. Explore the discovered tools with invoke_remote_tool (e.g. tool_name='maps', tool_name='wehicles'). Pay close attention to tool feedback and error messages to refine your queries.\n"
+            "3. Extract vehicle specs and terrain layout, then invoke plan_and_verify_route with your findings to compute and verify the optimal route to Skolwin.\n"
+            "4. Save your final mission notes and summary in run_notes.md using write_file."
+        )
+
+        try:
+            await agent_graph.ainvoke(
+                {"messages": [{"role": "user", "content": user_goal}]},
+                config={"callbacks": [bq_callback], "recursion_limit": recursion_limit},
+            )
+        except Exception as e:
+            logger.error(f"LangChain invocation error: {e}")
+            await self.audit.log_event(
+                session_id=session_id,
+                actor="agent",
+                content=f"LangChain error: {e}",
+                step_type="AGENT_ERROR",
+                metadata={"error": str(e)},
+            )
+
+        flag = state_tracker["flag"]
+        await self.audit.log_event(
+            session_id=session_id,
+            actor="system",
+            content=f"Completed task savethem. Flag: {flag or 'None'}",
+            step_type="SESSION_COMPLETE",
+            flag=flag,
+            metadata={
+                "steps": state_tracker["steps_count"],
+                "fuel_remaining": state_tracker["fuel_remaining"],
+                "food_remaining": state_tracker["food_remaining"],
+            },
+        )
+
+        return RunTaskResponse(
+            status="success" if flag else "error",
+            backend="langchain",
+            session_id=session_id,
+            flag=flag,
+            itinerary=state_tracker["itinerary"],
+            steps_count=state_tracker["steps_count"],
+            fuel_remaining=state_tracker["fuel_remaining"],
+            food_remaining=state_tracker["food_remaining"],
+            details="Route planned and verified successfully." if flag else "Could not acquire flag.",
+        )

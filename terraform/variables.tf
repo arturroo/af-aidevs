@@ -87,6 +87,9 @@ variable "datasets" {
         "s03e04" = {
             description = "Dataset for S03E04 autonomous negotiations tooling service"
         }
+        "s03e05" = {
+            description = "Dataset for S03E05 savethem autonomous routing tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -174,6 +177,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S03E04 autonomous negotiations tooling service"
             dataset_id  = "s03e04"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s03e05_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S03E05 savethem autonomous routing service"
+            dataset_id  = "s03e05"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -779,6 +788,47 @@ variable "cr_names" {
                              "roles/aiplatform.user"]
             dataset_roles = {
                 "s03e04" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-mcp-workspace"   = ["roles/run.invoker"]
+                "cr-mcp-web-gateway" = ["roles/run.invoker"]
+                "cr-model-armor"     = ["roles/run.invoker"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
+                MODEL_ARMOR_URL     = "MODEL_ARMOR_URL"
+                MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
+                MCP_WEB_GATEWAY_URL = "MCP_WEB_GATEWAY_URL"
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s03e05-savethem" = {
+            source_dir    = "../lessons/s03e05-niedeterministyczna-natura-modeli-jako-przewaga/task/cr-s03e05-savethem"
+            cpu           = "1"
+            memory        = "1Gi"
+            public        = false
+            cpu_idle      = true
+            max_instances = 1
+            concurrency   = 80
+            timeout       = "600s"
+            use_pack      = false
+            env           = {
+                BACKEND             = "langchain"
+                BQ_DATASET          = "s03e05"
+                BQ_TABLE            = "audit"
+                BQ_AUDIT_TABLE      = "af-aidevs.s03e05.audit"
+                GEMINI_MODEL        = "gemini-3.8-flash"
+                THINKING_LEVEL      = "low"
+                LANGSMITH_TRACING   = "true"
+                LANGSMITH_ENDPOINT  = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s03e05" = ["roles/bigquery.dataEditor"]
             }
             cr_roles = {
                 "cr-mcp-workspace"   = ["roles/run.invoker"]

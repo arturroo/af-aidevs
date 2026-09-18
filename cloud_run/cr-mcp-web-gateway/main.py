@@ -2,7 +2,7 @@ import os
 import logging
 import time
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -29,7 +29,40 @@ import mimetypes
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
-# --- 2. MCP SERVER INITIALIZATION ---
+# --- 2. HEADER SANITIZATION & OBSERVABILITY HELPERS (ARCH-003) ---
+def sanitize_headers(headers: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    """Masks sensitive tokens in headers (Authorization, Api-Key, Cookie, etc.)."""
+    if not headers:
+        return {}
+    sanitized = {}
+    for k, v in headers.items():
+        k_lower = str(k).lower()
+        if any(secret in k_lower for secret in ["auth", "key", "token", "cookie", "secret"]):
+            sanitized[str(k)] = "***"
+        else:
+            sanitized[str(k)] = str(v)
+    return sanitized
+
+
+def extract_relevant_response_headers(headers: httpx.Headers) -> Dict[str, str]:
+    """Extracts informative response headers while excluding sensitive or noisy internal headers."""
+    relevant = {}
+    for k, v in headers.items():
+        k_lower = k.lower()
+        if k_lower in [
+            "content-type",
+            "content-length",
+            "retry-after",
+            "server",
+            "date",
+            "cf-ray",
+            "cf-cache-status",
+            "x-request-id",
+        ] or k_lower.startswith("ratelimit-") or k_lower.startswith("x-ratelimit-"):
+            relevant[k] = v
+    return relevant
+
+# --- 3. MCP SERVER INITIALIZATION ---
 async def cleanup_sessions():
     """Periodically removes expired sessions from SESSION_MAPPING."""
     while True:
@@ -55,7 +88,7 @@ class WebGatewayServer(FastMCP):
 
 mcp = WebGatewayServer("Web-Gateway")
 
-# --- 3. TOOLS REGISTRATION ---
+# --- 4. TOOLS REGISTRATION ---
 @mcp.tool()
 async def fetch_web_resource(
     url: str = Field(description="The URL of the resource to fetch"),
@@ -86,6 +119,25 @@ async def fetch_web_resource(
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url)
+            resp_headers = extract_relevant_response_headers(response.headers)
+            status_code = response.status_code
+            logger.info(f"GET {url} -> Status: {status_code} | Headers: {resp_headers}")
+
+            if status_code >= 400:
+                logger.error(f"GET {url} failed with {status_code} -> Body: {response.text[:500]}")
+                log_audit(
+                    "web-gateway",
+                    "Fetch resource error",
+                    {
+                        "url": url,
+                        "output_path": output_path,
+                        "status_code": status_code,
+                        "response_headers": resp_headers,
+                        "response_body": response.text[:500],
+                    },
+                    session_id=x_session_id,
+                )
+
             response.raise_for_status()
             
         sha256_checksum = hashlib.sha256(response.content).hexdigest()
@@ -109,11 +161,14 @@ async def fetch_web_resource(
             "Fetched resource successfully",
             {
                 "workspace": workspace_name,
+                "url": url,
                 "output_path": output_path,
+                "status_code": status_code,
                 "size": len(response.content),
                 "mime_type": content_type,
                 "is_binary": is_binary,
                 "sha256": sha256_checksum,
+                "response_headers": resp_headers,
             },
             session_id=x_session_id
         )
@@ -126,6 +181,24 @@ async def fetch_web_resource(
             status=f"Successfully fetched resource and saved to {output_path} (size: {len(response.content)} bytes)",
             hint="Binary file detected. Use read_binary_file to inspect." if is_binary else "Text file detected. Use read_file to inspect."
         )
+    except httpx.HTTPStatusError as e:
+        resp_headers = extract_relevant_response_headers(e.response.headers)
+        error_details = f"HTTP {e.response.status_code}: {e.response.text[:500]}"
+        logger.error(f"Fetch resource {url} failed: {error_details}")
+        log_audit(
+            "web-gateway",
+            "Fetch resource failed",
+            {
+                "url": url,
+                "output_path": output_path,
+                "error": error_details,
+                "status_code": e.response.status_code,
+                "response_headers": resp_headers,
+                "response_body": e.response.text[:500],
+            },
+            session_id=x_session_id,
+        )
+        raise Exception(f"Failed to fetch resource: {error_details}")
     except Exception as e:
         log_audit("web-gateway", "Fetch resource failed", {"url": url, "output_path": output_path, "error": str(e)}, session_id=x_session_id)
         raise Exception(f"Failed to fetch resource: {e}")
@@ -146,44 +219,90 @@ async def post_web_resource(
     x_session_id = session_data["x_session_id"]
     session_data["last_activity"] = time.time()
     
+    sanitized_req_headers = sanitize_headers(headers)
+
     try:
         masked_payload = {k: ("***" if "key" in k.lower() else v) for k, v in payload.items()}
-        logger.info(f"POST {url} | Headers: {headers} | Payload: {masked_payload}")
-        log_audit("web-gateway", "POST request", {"url": url, "payload": masked_payload, "headers": headers}, session_id=x_session_id)
+        logger.info(f"POST {url} | Headers: {sanitized_req_headers} | Payload: {masked_payload}")
+        log_audit(
+            "web-gateway",
+            "POST request",
+            {
+                "url": url,
+                "payload": masked_payload,
+                "request_headers": sanitized_req_headers,
+            },
+            session_id=x_session_id,
+        )
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, json=payload, headers=headers)
-            logger.info(f"Response from {url} -> Status: {response.status_code} | Headers: {dict(response.headers)}")
+            resp_headers = extract_relevant_response_headers(response.headers)
+            status_code = response.status_code
+            logger.info(f"Response from {url} -> Status: {status_code} | Headers: {resp_headers}")
             
-            if response.status_code >= 400:
-                logger.error(f"POST {url} failed with {response.status_code} -> Body: {response.text}")
-                log_audit("web-gateway", "POST request error", {
-                    "url": url,
-                    "status_code": response.status_code,
-                    "response_headers": dict(response.headers),
-                    "response_body": response.text
-                }, session_id=x_session_id)
+            if status_code >= 400:
+                logger.error(f"POST {url} failed with {status_code} -> Body: {response.text[:500]}")
+                log_audit(
+                    "web-gateway",
+                    "POST request error",
+                    {
+                        "url": url,
+                        "status_code": status_code,
+                        "request_headers": sanitized_req_headers,
+                        "response_headers": resp_headers,
+                        "response_body": response.text[:500],
+                    },
+                    session_id=x_session_id,
+                )
                 
             response.raise_for_status()
             res_json = response.json()
             logger.info(f"Response Body JSON: {res_json}")
             
-        log_audit("web-gateway", "POST request successful", {"url": url, "response": res_json}, session_id=x_session_id)
+        log_audit(
+            "web-gateway",
+            "POST request successful",
+            {
+                "url": url,
+                "status_code": status_code,
+                "request_headers": sanitized_req_headers,
+                "response_headers": resp_headers,
+                "response": res_json,
+            },
+            session_id=x_session_id,
+        )
         return res_json
     except httpx.HTTPStatusError as e:
-        error_details = f"HTTP {e.response.status_code}: {e.response.text}"
+        resp_headers = extract_relevant_response_headers(e.response.headers)
+        error_details = f"HTTP {e.response.status_code}: {e.response.text[:500]}"
         logger.error(f"POST request to {url} failed: {error_details}")
-        log_audit("web-gateway", "POST request failed", {
-            "url": url,
-            "error": error_details,
-            "status_code": e.response.status_code,
-            "response_body": e.response.text,
-            "response_headers": dict(e.response.headers)
-        }, session_id=x_session_id)
+        log_audit(
+            "web-gateway",
+            "POST request failed",
+            {
+                "url": url,
+                "error": error_details,
+                "status_code": e.response.status_code,
+                "request_headers": sanitized_req_headers,
+                "response_body": e.response.text[:500],
+                "response_headers": resp_headers,
+            },
+            session_id=x_session_id,
+        )
         raise Exception(f"POST request failed: {error_details}")
     except Exception as e:
         logger.error(f"POST request to {url} encountered exception: {e}")
-        log_audit("web-gateway", "POST request failed", {"url": url, "error": str(e)}, session_id=x_session_id)
+        log_audit(
+            "web-gateway",
+            "POST request failed",
+            {
+                "url": url,
+                "error": str(e),
+                "request_headers": sanitized_req_headers,
+            },
+            session_id=x_session_id,
+        )
         raise Exception(f"POST request failed: {e}")
 
 # --- 4. MIDDLEWARE ---
