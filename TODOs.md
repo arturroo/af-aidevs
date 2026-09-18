@@ -71,3 +71,24 @@ Investigate implementing a non-blocking asynchronous Token Bucket rate limiter u
 1. **Zero-Wait Normal Operation:** When traffic is below burst thresholds, requests execute with zero artificial latency.
 2. **Graceful Queueing on Bursts:** Under sudden concurrency spikes, `AsyncLimiter(max_rate=N, time_period=M)` smoothly spreads requests across second intervals without thread blocking.
 3. **Benchmarking:** Measure tail latency ($P_{99}$) and 429 incidence on Cloud Run under concurrent agent load.
+
+---
+
+### [ARCH-003] Comprehensive Request/Response Headers & Status Code Logging in `cr-mcp-web-gateway`
+- **Status:** Completed (2026-09-17)
+- **Priority:** Medium (Telemetry & Observability)
+- **Target Component:** `cr-mcp-web-gateway` (Cloud Run Web Gateway Service)
+- **Date Added:** 2026-09-17
+- **Assigned To:** Artur Fejklowicz & Joi
+- **Reference:** [BEST_PRACTICES.md](BEST_PRACTICES.md) Section 2.1 (Zero-Pollution Telemetry & Logging)
+
+#### Problem Description
+Currently in `cr-mcp-web-gateway/main.py`:
+1. For successful `post_web_resource` calls (e.g. HTTP 200), `log_audit` logs strictly `{"url": url, "response": res_json}` into structured Cloud Logging metadata.
+2. The actual inbound HTTP response headers (such as `Retry-After`, `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, `CF-Ray`, `Server`) and HTTP status code are omitted from the structured `log_audit` metadata on 2xx responses.
+3. Because external course APIs (Centrala / `hub.ag3nts.org`) sometimes return business-level rate limiting errors (e.g. `{"code": -9999, "message": "Za często wykonujesz zapytania. Zwolnij."}`) inside HTTP 200 responses, auditing and debugging rate limit headers or upstream server characteristics requires digging through unstructured raw logs rather than structured queryable audit fields.
+
+#### Target Implementation
+1. **Outbound Request Headers Logging:** In `post_web_resource`, record outbound request headers in `log_audit` with sensitive tokens (e.g. `Authorization`, `Cookie`, `X-API-Key`) masked.
+2. **Inbound Response Headers & Status Logging:** Record `status_code` and relevant response headers (`retry-after`, `ratelimit-*`, `cf-ray`, `server`, `content-type`) in `log_audit` metadata for ALL requests, including successful (2xx), client-error (4xx), and server-error (5xx) responses.
+3. **Header Sanitization:** Filter or mask sensitive Set-Cookie or authorization tokens to maintain Zero-Pollution Telemetry compliance.
