@@ -175,36 +175,17 @@ In production agent architectures, setting an unyielding loop cap (`recursion_li
 - **The Reality of LLMs:** Probabilistic models occasionally output JSON arrays (`["ID1", "ID2"]`) or key-value dicts even when tool documentation explicitly instructs them to provide a comma-separated string (`"ID1, ID2"`).
 - **Implementation Rule:** Never strictly type incoming tool inputs as raw `str` without a Pydantic `field_validator(..., mode="before")`. Always normalize inputs (coercing lists, tuples, or dicts into unified string representations) before business validation. This eliminates unhandled `422 Unprocessable Entity` HTTP rejections that abort agent execution.
 
-### 3.4 Pattern Recognition: Workflow vs. Agent Decision Matrix & Hard-Deadline SLAs
+### 3.4 Decoupled Execution Under Hard-Deadline SLAs (Cognitive Planning vs. Deterministic Execution)
 **Added:** 2026-09-21  
-**Context:** Operating under tight operational time constraints (e.g., 30s–60s hardware session window, backup battery exhaustion, HTTP reverse proxy gateway timeouts).
+**Context:** Multi-step agentic workflows operating under tight operational time constraints (e.g., sub-minute session windows, hardware leases, or strict HTTP reverse proxy timeouts).
 
-#### The Anti-Pattern: Ingestion Blindness & Latency Explosion
-- **The Pitfall:** Forcing a probabilistic LLM into a multi-turn, sequential tool loop where it must repeatedly query an asynchronous job queue, parse intermediate outputs, and trigger subsequent commands one-by-one under an unforgiving real-time SLA (e.g., a 40-second hardware session timeout).
-- **Why it Fails (Latency Explosion):**
-  - Modern frontier LLM inference takes **2.0 – 6.0 seconds per turn** (reasoning + output token generation).
-  - An agent taking 5–8 sequential conversational turns to discover, poll, fetch, calculate, sign, and configure easily burns **30 – 50 seconds purely in LLM inference overhead and HTTP roundtrips**, before deterministic data transfer even finishes.
-  - Furthermore, stochastic variance means a single retried or reformatted turn guarantees breaching the operational SLA (e.g., `-805: Session timeout / battery drained`).
-- **Ingestion Blindness:** When multiple asynchronous jobs (telemetry, weather, power plant checks, hardware self-tests) complete out of order, treating an LLM context as a live FIFO queue forces the model to synthesize high-velocity streaming data on the fly. This results in hallucinated parameter matching (e.g., pairing a power production timestamp with a storm wind speed signature, causing signature mismatch errors like `-815`).
-
-#### The Solution: The Two-Speed Hybrid Architecture ("Thinker vs. Doer")
-To reconcile high agentic autonomy (exploring unfamiliar APIs) with strict time-bounded operational execution, decouple the system into two distinct architectural phases:
-
-1. **Phase 1: The Thinker (Unbounded Cognitive Exploration & Discovery)**
-   - The LLM operates in an unconstrained environment without active hardware clocks.
-   - It performs tool reconnaissance (`action: "help"`), reads technical specifications (`action: "get", param: "documentation"`), translates physical formulas (feathering angles, wind speed cutoff thresholds), and records operational constraints into persistent notes (`specs.md`, `todo.md`).
-   - The LLM decides *what* needs to be done and validates the boundary rules.
-
-2. **Phase 2: The Doer (Deterministic Asynchronous Pipelining)**
-   - Once execution begins and the hard countdown starts, hand off control to a consolidated, deterministic async tool or workflow.
-   - **Parallel Telemetry Pipelining:** Dispatch all initial requests concurrently (`asyncio.gather` for weather forecast, power plant deficit, and turbine hardware self-test).
-   - **High-Frequency Queue Polling:** Drop queue polling intervals from standard conversational delays ($1.0\text{ s}$) to tight asynchronous intervals (**$0.2\text{ s}$ / 200 ms**). This shaves 5–6 seconds of idle wait time off queue retrieval.
-   - **Out-of-Order Queue Demultiplexing:** Never rely on FIFO popping or naive array indexing. Parse and demultiplex asynchronous responses deterministically using composite domain keys (e.g. `startDate` + `startHour` extracted from `signedParams`).
-   - **Batch Cryptographic Signatures:** Query cryptographic signature generators concurrently using `asyncio.gather` across all scheduled timestamps, eliminating sequential network egress latency.
-   - **Supervisory LLM Role:** The LLM's role in Phase 2 is reduced to high-level orchestration, final verification of the captured flag (`{FLG:...}`), and persistent auditing.
-
-#### Architectural Takeaway & Google Engineering Axiom:
+#### The Golden Rule:
 > *"Never allow an LLM to perform sequential, stochastic turn-taking operations where a hard SLA and deterministic logic exist. Cognitive models plan; deterministic event loops execute."*
+
+#### Architectural Principle:
+When a task involves strict latency SLAs and deterministic business logic (such as polling asynchronous queues, mathematical calculations, cryptographic signing, or batch configuration), do not force the LLM into a multi-turn sequential tool loop. Instead, decouple the cognitive and execution layers:
+- **Cognitive Layer (LLM):** Performs unbounded exploration, inspects schemas and documentation, extracts domain rules, defines execution constraints, and supervises final outcomes.
+- **Deterministic Execution Layer (Code / Async Pipeline):** Executes the time-critical, high-throughput sequence deterministically using concurrent execution (`asyncio.gather`), sub-second polling intervals, and composite-key event demultiplexing.
 
 ---
 
@@ -260,5 +241,5 @@ To reconcile high agentic autonomy (exploring unfamiliar APIs) with strict time-
 | **2026-09-16** | Agent Budgeting | Rule of Thumb: $\text{max\_turns} = 2 \times \text{steps} + 2$ | Production loop cap preventing autonomous runaway. |
 | **2026-09-16** | Context Budgeting | Token Budgeting & Paging (1k–4k tokens) | Prevents *Lost in the Middle* attention degradation and 422 errors. |
 | **2026-09-16** | Vector Retrieval | Matryoshka Representation Learning (MRL) 768d | Compresses `gemini-embedding-2` to 768d with native `sqlite-vec` support at \$0.005 indexing cost. |
-| **2026-09-21** | Agent Architecture | Two-Speed Hybrid Architecture ("Thinker vs. Doer") | Slashed multi-job queue execution from >45s (timeout failure) to **31.25s** (under 40s SLA) via `asyncio.gather` and 200ms polling. |
+| **2026-09-21** | Agent Architecture | Decoupled Cognitive Planning vs. Async Pipeline Execution | Slashed multi-job queue execution from >45s (timeout failure) to **31.25s** (under 40s SLA) via `asyncio.gather` and 200ms polling. |
 | **2026-09-21** | Queue Demultiplexing | Out-of-Order Async Queue Matching via `signedParams` | Eliminated cryptographic signature mismatch (`-815`) by matching tokens via composite date-hour keys. |

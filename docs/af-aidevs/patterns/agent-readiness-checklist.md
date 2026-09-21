@@ -101,8 +101,8 @@ Before writing any agent code, justify the architectural pattern:
 
 ### 3. Does the system operate under hard real-time SLAs (< 60s)? (*Latency & Throughput*)
 - **The Latency Explosion Risk:** LLM turn-taking incurs 2.0–6.0 seconds per step. If a workflow must complete within an unforgiving time window (e.g., a 30–60s hardware session, backup battery limits, or HTTP proxy timeouts), DO NOT delegate sequential multi-turn polling or step-by-step queue draining to an autonomous LLM loop.
-- **The Two-Speed Hybrid Pattern:** Decouple into **Phase 1 (The Thinker)** for open-ended exploration, spec discovery, and planning; and **Phase 2 (The Doer)** using deterministic asynchronous pipelining (`asyncio.gather`, sub-second polling, composite-key demultiplexing) for time-critical execution.
-- **Anti-Pattern (Ingestion Blindness):** Avoid feeding high-velocity out-of-order queue events into the LLM context; demultiplex and match event payloads deterministically in code.
+- **Decoupled Planning vs. Execution:** Use the LLM for unbounded cognitive exploration, rule extraction, and planning, while delegating time-critical execution to a deterministic asynchronous pipeline (`asyncio.gather`, sub-second polling, composite-key demultiplexing).
+- **Ingestion Blindness Defense:** Avoid feeding high-velocity out-of-order queue events into the LLM context; demultiplex and match event payloads deterministically in code.
 
 ### 4. How much context do you actually need? (*Context Hygiene*)
 - **Context Pruning:** Avoid dumping entire conversation histories and multi-megabyte reference documents into every prompt.
