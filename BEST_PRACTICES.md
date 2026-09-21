@@ -4,7 +4,7 @@
 **AI Companion:** Joi (*Blade Runner 2049*)  
 **Repository:** `af-aidevs`  
 **First Created:** 2026-09-16  
-**Last Updated:** 2026-09-16  
+**Last Updated:** 2026-09-21  
 
 ---
 
@@ -175,6 +175,18 @@ In production agent architectures, setting an unyielding loop cap (`recursion_li
 - **The Reality of LLMs:** Probabilistic models occasionally output JSON arrays (`["ID1", "ID2"]`) or key-value dicts even when tool documentation explicitly instructs them to provide a comma-separated string (`"ID1, ID2"`).
 - **Implementation Rule:** Never strictly type incoming tool inputs as raw `str` without a Pydantic `field_validator(..., mode="before")`. Always normalize inputs (coercing lists, tuples, or dicts into unified string representations) before business validation. This eliminates unhandled `422 Unprocessable Entity` HTTP rejections that abort agent execution.
 
+### 3.4 Decoupled Execution Under Hard-Deadline SLAs (Cognitive Planning vs. Deterministic Execution)
+**Added:** 2026-09-21  
+**Context:** Multi-step agentic workflows operating under tight operational time constraints (e.g., sub-minute session windows, hardware leases, or strict HTTP reverse proxy timeouts).
+
+#### The Golden Rule:
+> *"Never allow an LLM to perform sequential, stochastic turn-taking operations where a hard SLA and deterministic logic exist. Cognitive models plan; deterministic event loops execute."*
+
+#### Architectural Principle:
+When a task involves strict latency SLAs and deterministic business logic (such as polling asynchronous queues, mathematical calculations, cryptographic signing, or batch configuration), do not force the LLM into a multi-turn sequential tool loop. Instead, decouple the cognitive and execution layers:
+- **Cognitive Layer (LLM):** Performs unbounded exploration, inspects schemas and documentation, extracts domain rules, defines execution constraints, and supervises final outcomes.
+- **Deterministic Execution Layer (Code / Async Pipeline):** Executes the time-critical, high-throughput sequence deterministically using concurrent execution (`asyncio.gather`), sub-second polling intervals, and composite-key event demultiplexing.
+
 ---
 
 ## 4. Vertex AI Quota Engineering & 429 Error Resilience
@@ -229,3 +241,5 @@ In production agent architectures, setting an unyielding loop cap (`recursion_li
 | **2026-09-16** | Agent Budgeting | Rule of Thumb: $\text{max\_turns} = 2 \times \text{steps} + 2$ | Production loop cap preventing autonomous runaway. |
 | **2026-09-16** | Context Budgeting | Token Budgeting & Paging (1k–4k tokens) | Prevents *Lost in the Middle* attention degradation and 422 errors. |
 | **2026-09-16** | Vector Retrieval | Matryoshka Representation Learning (MRL) 768d | Compresses `gemini-embedding-2` to 768d with native `sqlite-vec` support at \$0.005 indexing cost. |
+| **2026-09-21** | Agent Architecture | Decoupled Cognitive Planning vs. Async Pipeline Execution | Slashed multi-job queue execution from >45s (timeout failure) to **31.25s** (under 40s SLA) via `asyncio.gather` and 200ms polling. |
+| **2026-09-21** | Queue Demultiplexing | Out-of-Order Async Queue Matching via `signedParams` | Eliminated cryptographic signature mismatch (`-815`) by matching tokens via composite date-hour keys. |

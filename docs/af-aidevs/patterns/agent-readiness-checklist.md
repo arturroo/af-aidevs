@@ -99,9 +99,15 @@ Before writing any agent code, justify the architectural pattern:
 - **Tiered Selection:** Route simple classification and structured extraction tasks to fast/cheap models (e.g., `gemini-3.5-flash-lite`, `gpt-4o-mini`).
 - **Reserve Reasoning Models:** Restrict heavy reasoning models (`gemini-3-flash-preview`, `claude-3-7-sonnet`) to complex multi-hop decomposition and ambiguity resolution.
 
-### 3. How much context do you actually need? (*Context Hygiene*)
+### 3. Does the system operate under hard real-time SLAs (< 60s)? (*Latency & Throughput*)
+- **The Latency Explosion Risk:** LLM turn-taking incurs 2.0–6.0 seconds per step. If a workflow must complete within an unforgiving time window (e.g., a 30–60s hardware session, backup battery limits, or HTTP proxy timeouts), DO NOT delegate sequential multi-turn polling or step-by-step queue draining to an autonomous LLM loop.
+- **Decoupled Planning vs. Execution:** Use the LLM for unbounded cognitive exploration, rule extraction, and planning, while delegating time-critical execution to a deterministic asynchronous pipeline (`asyncio.gather`, sub-second polling, composite-key demultiplexing).
+- **Ingestion Blindness Defense:** Avoid feeding high-velocity out-of-order queue events into the LLM context; demultiplex and match event payloads deterministically in code.
+
+### 4. How much context do you actually need? (*Context Hygiene*)
 - **Context Pruning:** Avoid dumping entire conversation histories and multi-megabyte reference documents into every prompt.
 - **Prompt Caching & Batch API:** Utilize Prompt Caching on stable system instructions and leverage Batch API (50% discount) for non-real-time asynchronous workloads.
+
 
 ---
 

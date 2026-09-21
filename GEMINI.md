@@ -277,6 +277,11 @@ To ensure production-grade stability, clean architecture, and deterministic agen
 - **Anti-Pattern: Raw Binary / Base64 Log Pollution:** Dumping raw Base64 strings, file byte dumps, or binary blobs into error messages, stdout, or BigQuery audit logs.
   - *Risks:* Explodes Cloud Logging and BigQuery storage costs, breaches HTTP response size limits (e.g., sending 13MB 500 error responses), degrades trace inspection in LangSmith/Cloud Logging, and leaks entire databases or private assets into observability systems.
   - *Proper Pattern:* Strictly log metadata only (`file_path`, `size_bytes`, `mime_type`, `sha256`) and enforce strict truncation (`error[:300]`, `output[:300]`) across all callback handlers and exception formatters.
+- **Anti-Pattern: Stochastic Turn-Taking Under Hard Real-Time SLAs (Latency Explosion & Ingestion Blindness):** Never delegate sequential multi-turn polling, step-by-step queue draining, or time-critical orchestration to an autonomous LLM loop when an operational SLA exists (e.g., $<60$s session, backup battery limits, or HTTP gateway timeouts).
+  - *Risks:* LLM inference takes 2–6s per turn. Multi-turn reasoning loops easily burn 30–50s in model overhead alone, guaranteeing SLA breaches (`timeout`). Furthermore, feeding high-velocity, out-of-order asynchronous queue events into an LLM context creates *Ingestion Blindness*, causing hallucinated parameter matching and desynchronization errors.
+  - *Proper Pattern:* Decouple cognitive planning from deterministic execution:
+    > *"Never allow an LLM to perform sequential, stochastic turn-taking operations where a hard SLA and deterministic logic exist. Cognitive models plan; deterministic event loops execute."*
+    The LLM performs unbounded pre-flight exploration, schema discovery, and planning. Once execution begins under an active deadline, control is handed off to a consolidated, deterministic async pipeline (`asyncio.gather`, sub-second polling, composite-key event demultiplexing). The LLM only oversees, verifies the final outcome, or handles unexpected edge cases.
 
 ### Cloud Run Gold Standards
 To ensure consistent deployment and runtime behavior across all microservices:
