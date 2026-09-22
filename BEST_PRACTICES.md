@@ -187,6 +187,23 @@ When a task involves strict latency SLAs and deterministic business logic (such 
 - **Cognitive Layer (LLM):** Performs unbounded exploration, inspects schemas and documentation, extracts domain rules, defines execution constraints, and supervises final outcomes.
 - **Deterministic Execution Layer (Code / Async Pipeline):** Executes the time-critical, high-throughput sequence deterministically using concurrent execution (`asyncio.gather`), sub-second polling intervals, and composite-key event demultiplexing.
 
+### 3.5 Positive Syntactic Priming & Causal Attention Alignment
+**Added:** 2026-09-22  
+**Context:** Prompt engineering, tool calling reliability, and causal attention dynamics in autoregressive Transformer architectures.
+
+- **The Causal Attention Mechanism:** In autoregressive decoder-only Transformers (e.g. Gemini, GPT), self-attention operates causally from left to right. Early tokens in a directive establish strong attention priors (*Primacy Effect*), shaping the representation of all subsequent tokens.
+- **The Best Practice (Positive Syntactic Priming):** Always lead prompt directives with the **concrete, positive syntactic prototype** (the exact tool invocation syntax or expected schema) before introducing descriptive prose or secondary constraints:
+  ```markdown
+  ### Execute Action
+  Whenever executing an operation, call:
+  `call_tool(action="<command_name>", params={<key_value_params>}, reasoning="...")`
+  - **Unified Dispatch:** All actions are dispatched exclusively through this tool.
+  ```
+- **Cognitive & Operational Advantages:**
+  1. **Attention Anchor:** Early syntactic anchoring primes the model's self-attention matrix, significantly reducing syntax errors and hallucinated tool names.
+  2. **Reduced Cognitive Latency:** Eliminates the need for the model to reconstruct syntax from prose explanations scattered throughout a prompt.
+  3. **Zero Negative Noise:** Avoids diluting the context window with prohibitions on non-existent capabilities.
+
 ---
 
 ## 4. Vertex AI Quota Engineering & 429 Error Resilience
@@ -224,7 +241,140 @@ When a task involves strict latency SLAs and deterministic business logic (such 
    - **Performance:** Slashes execution time from 13–34s (or 4 minutes of 429 retry backoff) down to **0.05 ms**.  
    - **Cost & Reliability:** Consumes **0 tokens**, causes **0 quota strain**, and completely eliminates 429 cascading timeouts. If no valid codes exist, the service safely falls back to the LLM.
 5. **Traffic Smoothing & Model Tiering (`Flash-Lite`):**  
-   Avoid firing consecutive heavyweight LLM queries in tight synchronous loops within agent microservices. Use dedicated ultra-fast lightweight models (e.g. `gemini-3.5-flash-lite` @ `location="global"`) for high-throughput entity extraction and pre-flight intent parsing, while reserving frontier models (`gemini-3.8-flash`) for deep synthesis and constraint satisfaction. Implement automatic fallback between model tiers.
+   Avoid firing consecutive heavyweight LLM queries in tight synchronous loops within agent microservices. Use dedicated ultra-fast lightweight models (e.g. `gemini-3.5-flash-lite` @ `location="global"`) for high-throughput entity extraction and pre-flight intent parsing, while reserving frontier models (`gemini-3.8-flash`) for deep synthesis and constraint satisfaction. Implement automatic fallback between model tiers. (Detailed framework comparison and cognitive load trade-offs are documented in [The Right Model for the Job](RIGHT_MODEL_FOR_THE_JOB.md)).
+
+### 4.3 Algorithmic Backoff Strategies: Exponential vs. Fibonacci vs. Quadratic (Polynomial)
+**Added:** 2026-09-21  
+**Context:** Resilient network egress, Centrala rate limiting (HTTP 429 / `-9999`), and upstream server error ($\ge 500$) retry dynamics in distributed agent architectures.
+
+#### The Core Problem: Thundering Herds & Latency Trade-offs
+When downstream services fail or apply rate limits, naive retries (immediate or fixed-interval linear retries) create synchronized retry spikes—the classic **Thundering Herd Problem**—that further saturate the bottleneck. Adding a backoff curve slows request frequency, while adding **Jitter** (pseudo-random dispersion) breaks wave synchronization.
+
+#### Mathematical Comparison of Backoff Curves:
+
+| Attempt ($n$) | Linear ($1 \cdot n$) | Fibonacci ($\text{Fib}(n)$) | Quadratic ($n^2$) | Binary Exponential ($2^n$) |
+| :---: | :---: | :---: | :---: | :---: |
+| **Complexity** | $O(n)$ | $O(\phi^n) \approx O(1.618^n)$ | $O(n^2)$ | $O(2^n)$ |
+| **#1** | 1.0 s | 1.0 s | 1.0 s | 2.0 s |
+| **#2** | 2.0 s | 1.0 s | 4.0 s | 4.0 s |
+| **#3** | 3.0 s | 2.0 s | 9.0 s | 8.0 s |
+| **#4** | 4.0 s | 3.0 s | 16.0 s | 16.0 s |
+| **#5** | 5.0 s | 5.0 s | 25.0 s | 32.0 s |
+| **#6** | 6.0 s | 8.0 s | 36.0 s | 64.0 s |
+| **#7** | 7.0 s | 13.0 s | 49.0 s | 128.0 s |
+| **#8** | 8.0 s | 21.0 s | 64.0 s | 256.0 s |
+| **#10** | 10.0 s | 55.0 s | 100.0 s | 1,024.0 s (~17 min) |
+
+```
+Backoff Delay (s)
+    ▲
+100 ┼                                                  * (Quadratic n^2)
+    │                                              # (Exponential 2^n explodes!)
+ 64 ┼                                          *
+ 32 ┼                                      *   #
+ 16 ┼                                  *   #
+  8 ┼                          *   #   + (Fibonacci phi^n)
+  4 ┼                      *   #   +
+  1 ┼──*───#───+───·───·───·───·───·────────────────────────► Attempt (n)
+```
+
+#### Application Profiles: Where Does Each Strategy Fit?
+
+1. **Binary Exponential Backoff with Full Jitter ($2^n$): The Enterprise Gold Standard**
+   - **Primary Target:** External rate limiters (HTTP 429, Token/Leaky Buckets), catastrophic upstream service outages ($\ge 500$), and multi-tenant cloud APIs (Vertex AI, Centrala AI_Devs).
+   - **Why it wins:** Rate limit buckets usually reset on fixed minute windows (e.g., 60 seconds). Slower growth curves waste retry attempts inside the penalty window. Exponential backoff rapidly backs off to 15–30s, clearing the throttle window in 3–5 attempts.
+   - **Mandatory Requirement:** Must include Full Jitter ($t = \text{random}(0, \min(t_{\max}, 2^n \cdot c))$) to prevent synchronized resonance.
+
+2. **Fibonacci Backoff with Jitter ($\phi^n \approx 1.618^n$): The Interactive & Low-Latency Sweet Spot**
+   - **Primary Target:** User-facing interactive applications (WebSockets, SSE streams, UI reconnects in Google Docs/Figma), database optimistic lock contention, and micro-burst transient blips.
+   - **Why it wins:** Asymptotically governed by the golden ratio $\phi \approx 1.618$. It offers a gentler ramp-up than exponential doubling ($1\text{s} \to 1\text{s} \to 2\text{s} \to 3\text{s} \to 5\text{s}$). If a database row lock or network handshake resolves in 1.5 seconds, Fibonacci retries promptly without forcing a human user or queue to idle for 8 or 16 seconds.
+
+3. **Quadratic / Polynomial Backoff with Jitter ($n^2$): The Background Queue & Self-Healing Worker**
+   - **Primary Target:** Asynchronous background tasks (Celery, Cloud Tasks, Pub/Sub dead-letter queues), container crash loops, and database WAL replay / crash recovery.
+   - **Why it wins:** Exponential backoff explodes too violently in later attempts ($2^8 = 256$s, $2^{10} = 1024$s), causing background jobs to sit idle for hours if a database takes 45 seconds to recover. Quadratic backoff ramps up firmly in early attempts ($1\text{s} \to 4\text{s} \to 9\text{s} \to 16\text{s}$), yet remains bounded and predictable in later cycles ($25\text{s}, 36\text{s}, 49\text{s}, 64\text{s}$), perfectly matching typical database and container recovery windows (15–60s).
+
+#### Tenacity Reference Implementations:
+
+```python
+import random
+from typing import Any
+from tenacity.wait import wait_base, wait_random_exponential
+
+# 1. Exponential Backoff with Full Jitter & Server Retry-After Honor
+class wait_retry_after_or_exponential(wait_base):
+    def __init__(self, multiplier: float = 1.0, min_wait: float = 1.0, max_wait: float = 15.0):
+        self.fallback = wait_random_exponential(multiplier=multiplier, min=min_wait, max=max_wait)
+
+    def __call__(self, retry_state: Any) -> float:
+        if retry_state.outcome and retry_state.outcome.failed:
+            exc = retry_state.outcome.exception()
+            if hasattr(exc, "retry_after") and exc.retry_after:
+                return float(exc.retry_after)
+        return float(self.fallback(retry_state))
+
+# 2. Fibonacci Backoff with Jitter
+class wait_fibonacci_jitter(wait_base):
+    def __init__(self, multiplier: float = 1.0, max_wait: float = 30.0):
+        self.multiplier = multiplier
+        self.max_wait = max_wait
+
+    def __call__(self, retry_state: Any) -> float:
+        n = retry_state.attempt_number
+        a, b = 1, 1
+        for _ in range(n - 1):
+            a, b = b, a + b
+        target = a * self.multiplier
+        return min(self.max_wait, random.uniform(0.5 * target, target))
+
+# 3. Quadratic (Polynomial) Backoff with Jitter
+class wait_quadratic_jitter(wait_base):
+    def __init__(self, multiplier: float = 1.0, max_wait: float = 60.0):
+        self.multiplier = multiplier
+        self.max_wait = max_wait
+
+    def __call__(self, retry_state: Any) -> float:
+        n = retry_state.attempt_number
+        raw_delay = (n ** 2) * self.multiplier
+        return min(self.max_wait, random.uniform(0.5 * raw_delay, raw_delay))
+### 4.4 Canonical Agent Invocation: HTTP POST vs. The GET /run Anti-Pattern
+**Added:** 2026-09-22  
+**Context:** Cloud Run microservice task triggers, API semantics, crawler resilience, and enterprise invocation standards.
+
+#### The Architectural Decision:
+*Should autonomous agents on Cloud Run expose an HTTP `GET /run` endpoint for developer convenience, or strictly adhere to HTTP `POST /run`?*
+
+**Verdict:** **Strictly HTTP `POST /run`**. Exposing autonomous agent execution over HTTP `GET` is an architectural anti-pattern that violates protocol standards and introduces critical operational vulnerabilities.
+
+#### Why GET /run is an Anti-Pattern:
+
+1. **Protocol Violation (RFC 9110 Safe & Idempotent Semantics):**  
+   The HTTP specification (RFC 9110, Section 9.2.1) mandates that `GET` methods must be *Safe*—meaning they are read-only and produce zero side effects on the server. Autonomous agents are fundamentally state-mutating: they spawn units, consume Action Points, query third-party paid APIs, mutate workspace files, and stream audit trails to BigQuery. Invoking an agent via `GET` breaks the foundational contract of web architecture.
+
+2. **The "Link-Unfurler & Browser Pre-fetch" Disaster:**  
+   - Modern chat and collaboration tools (Slack, Microsoft Teams, Discord, LinkedIn) feature automatic *Link Unfurlers*. When an engineer pastes a Cloud Run URL into a channel, the bot immediately fires an asynchronous HTTP `GET` request to generate a preview card.
+   - Modern browsers (Google Chrome, Apple Safari) implement aggressive *DNS & Link Pre-fetching*—speculatively sending `GET` requests to URLs typed into the address bar or rendered on a page before the user even presses Enter.
+   - **Consequence:** An endpoint on `GET /run` will be triggered silently and repeatedly by background crawlers, wasting LLM tokens, exhausting finite task Action Points, and causing unpredictable race conditions.
+
+3. **Cache Invalidation & Proxy Poisoning:**  
+   Intermediate infrastructure (Cloud CDN, Envoy proxies, browser caches) is designed to cache `GET` responses. Subsequent calls to `GET /run` may be short-circuited by a caching proxy, returning a cached execution result without actually running the agent. `POST` requests are never cached by default.
+
+4. **Alignment with Google Cloud AIP-136 (Custom Methods):**  
+   Google Cloud's official API Design Guide ([Google AIP-136](https://aip.dev/136)) dictates that custom operations representing verbs or actions (such as `:run`, `:cancel`, `:execute`) **MUST use HTTP POST**. All cloud orchestrators (Cloud Tasks, Cloud Scheduler, Eventarc, Pub/Sub Push subscriptions) trigger workers exclusively via HTTP `POST`.
+
+#### Canonical FastAPI Implementation:
+
+```python
+# Canonical Execution Endpoint (POST Strictly)
+@app.post("/run", response_model=RunTaskResponse)
+async def run_task(request: RunTaskRequest | None = None):
+    """Canonical task execution endpoint accepting optional JSON payload with dynamic overrides."""
+    req = request or RunTaskRequest()
+    session_id = req.session_id or generate_session_id(backend=req.backend)
+    rec_limit = req.recursion_limit or req.max_iterations or config.MAX_AGENT_ITERATIONS
+
+    agent = get_agent(backend=req.backend)
+    return await agent.execute(session_id=session_id, recursion_limit=rec_limit)
+```
 
 ---
 
@@ -243,3 +393,8 @@ When a task involves strict latency SLAs and deterministic business logic (such 
 | **2026-09-16** | Vector Retrieval | Matryoshka Representation Learning (MRL) 768d | Compresses `gemini-embedding-2` to 768d with native `sqlite-vec` support at \$0.005 indexing cost. |
 | **2026-09-21** | Agent Architecture | Decoupled Cognitive Planning vs. Async Pipeline Execution | Slashed multi-job queue execution from >45s (timeout failure) to **31.25s** (under 40s SLA) via `asyncio.gather` and 200ms polling. |
 | **2026-09-21** | Queue Demultiplexing | Out-of-Order Async Queue Matching via `signedParams` | Eliminated cryptographic signature mismatch (`-815`) by matching tokens via composite date-hour keys. |
+| **2026-09-21** | Network Resilience | Algorithmic Backoff Hierarchy (Exponential vs. Fibonacci vs. Quadratic) | Established quantitative selection matrix: Exponential for rate-limits (429), Fibonacci for UI/lock contention, Quadratic for background queues. |
+| **2026-09-22** | API Design & SRE | Canonical Agent Invocation: HTTP POST vs. The GET /run Anti-Pattern | Enforced strict `POST /run` standard (RFC 9110 / Google AIP-136), preventing crawler pre-fetch disasters and proxy cache poisoning. |
+| **2026-09-22** | Prompt Engineering | Positive Syntactic Priming & Causal Attention Alignment | Anchors canonical tool invocation syntax at top of prompt directives, maximizing early causal attention weights and eliminating syntax hallucination. |
+
+

@@ -1,0 +1,17 @@
+=== S04E03 Domatowo Search & Rescue Operation Run Notes ===
+Date: 2026-09-22
+Task: domatowo
+Backend: langchain (on Cloud Run cr-s04e03-domatowo)
+Status: SUCCESS (Survivor Evacuated)
+AP Spent: 20 / 300
+Survivor Location: G1
+Drop-off Tile: E2
+Extraction Tile: G1
+Flag: {FLG:...}
+Operational Summary:
+- Clean board state ensured via reset command.
+- Transporter deployed with scout to E2 drop-off.
+- Scout disembarked, moved onto North Cluster (BLOK_3P) perimeter.
+- Survivor detected at tile G1.
+- Extraction helicopter called successfully to G1.
+- Total AP consumed: 20 AP (saving 280 AP from the 300 AP ceiling).

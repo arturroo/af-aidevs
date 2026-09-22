@@ -50,6 +50,7 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
     - `Dockerfile`: Using official `python:3.13.5-slim`, `ENV PYTHONUNBUFFERED=1`, `COPY pyproject.toml ./`, `RUN uv sync`, `COPY . .`, and `CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]`.
 - LLM Default: Starting **2026-09-07** (from lesson `s02e04` onwards), we use **Gemini 3.8 Flash** (`gemini-3.8-flash`) on **Vertex AI** via the modern `google-genai` SDK and `langchain-google-genai` as our primary workhorse model. Default location is `GOOGLE_CLOUD_LOCATION=global`, with default thinking level set to `thinking_level="low"` (or `types.ThinkingLevel.LOW`) to minimize latency and token overhead.
   - Model Guide & Reference: [Gemini 3.8 Flash Developer Guide](docs/vertex-ai/gemini-3.8-flash-guide.md)
+  - Model Selection & Cognitive Hierarchy Guide: [The Right Model for the Job](RIGHT_MODEL_FOR_THE_JOB.md)
   - Pricing Reference: https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing?hl=en
   - Available models on Vertex AI: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/migrate
   - Model regional availability: https://docs.cloud.google.com/gemini-enterprise-agent-platform/resources/locations
@@ -80,6 +81,10 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
   - `uvx ruff check . --exclude .venv --fix` to enforce modern Python 3.13 idioms (`dict` instead of `typing.Dict`, `X | None` instead of `Optional[X]`, and automatic import sorting).
   - `uvx ruff format . --exclude .venv` to ensure consistent code styling.
 - **Static Type Checking (mypy):** Run static typing validation on all schemas, services, and agent modules using `uvx mypy . --ignore-missing-imports --exclude .venv`. All tool inputs, responses, and API payloads must have strict, unambiguous type annotations.
+- **Clean Code & Strict Typings Standards (PEP 585, PEP 604 & Closed-Set Literals):**
+  - **Discrete Values as Literals/Enums:** Never use raw, unbounded `str` for fields with known discrete domain values (e.g., `status`, `unit_type`, `action`). Always use `Literal["option_a", "option_b"]` or `StrEnum`. This guarantees compile-time verification in mypy, IDE autocomplete, and strict, closed-set JSON schemas for the LLM.
+  - **Modern Python 3.13 Idioms:** Exclusively use native collections (`list[str]`, `dict[str, Any]`, `set[int]`) and union syntax (`X | None`, `A | B`) instead of legacy `typing` constructs (`List`, `Dict`, `Optional`, `Union`).
+  - **Contract Hermeticism & Zero Unbounded Types:** Avoid `Any` across public service boundaries and tool schemas. Every tool input and output MUST be modeled with a dedicated Pydantic model featuring explicit `Field(description=..., examples=...)` metadata. Unknown runtime responses must be deterministically coerced or mapped to safe fallback states.
 
 - **Monolith Scaling:** If the `af_aidevs` shared package exceeds 10 modules, it must be thematically split into separate packages (e.g., `af_aidevs_x`, `af_aidevs_y`) to maintain small footprints and fast cold starts in Cloud Run. We use "Podejście A" with empty `__init__.py` files to prevent eager loading of heavy dependencies.
 
@@ -282,6 +287,18 @@ To ensure production-grade stability, clean architecture, and deterministic agen
   - *Proper Pattern:* Decouple cognitive planning from deterministic execution:
     > *"Never allow an LLM to perform sequential, stochastic turn-taking operations where a hard SLA and deterministic logic exist. Cognitive models plan; deterministic event loops execute."*
     The LLM performs unbounded pre-flight exploration, schema discovery, and planning. Once execution begins under an active deadline, control is handed off to a consolidated, deterministic async pipeline (`asyncio.gather`, sub-second polling, composite-key event demultiplexing). The LLM only oversees, verifies the final outcome, or handles unexpected edge cases.
+- **Anti-Pattern: Mutating / Agent Execution Trigger via HTTP `GET` (`GET /run`):** Exposing autonomous agent execution, action pipelines, or state-mutating endpoints over HTTP `GET` (e.g. `@app.get("/run")`).
+  - *Risks:*
+    1. **Protocol Violation (RFC 9110):** HTTP `GET` MUST be safe (read-only) and idempotent. Autonomous agents mutate state, invoke paid external APIs, consume Action Points, write to workspaces, and log telemetry.
+    2. **Silent Unintended Execution (Link Crawlers, Pre-fetching, Chat Unfurlers):** Browser DNS/link pre-fetching engines (Chrome, Safari) and chat collaboration link-preview unfurlers (Slack, Teams, Discord) automatically fire asynchronous HTTP `GET` requests against any pasted or typed URL. Exposing `/run` on `GET` causes bots and browsers to silently trigger multi-minute agent runs, depleting quotas, AP budgets, and compute resources without human intent.
+    3. **Intermediary Cache Poisoning:** Reverse proxies, Cloud CDN, Envoy, and browser caches are permitted to cache `GET` responses, leading to stale responses or failed subsequent triggers.
+  - *Proper Pattern:* **HTTP `POST /run` Strictly.** All custom execution methods, agent triggers, and mutating action pipelines MUST exclusively use HTTP `POST` conforming to Google Cloud API Improvement Proposals ([Google AIP-136 Custom Methods](https://aip.dev/136)). All invocation parameters (`backend`, `session_id`, `max_iterations`, `recursion_limit`) MUST be passed via the JSON request payload (with sensible fallbacks) or explicit CLI flags.
+- **Anti-Pattern: Prompt Leakage & Speculative Token Bloat (Ingestion Pollution):** Hardcoding runtime-discoverable action names, unverified schema parameters, or speculative domain values inside system instructions when an introspection mechanism exists.
+  - *Risks:* Violates the Zero Prior Knowledge principle, dilutes transformer attention with redundant tokens, accelerates context degradation, and causes catastrophic failures when underlying schemas change.
+  - *Proper Pattern:* **Zero-Leakage & Zero-Waste Prompting.** Keep system instructions strictly generic and high-level. Mandate that the agent discover operational capabilities dynamically, persist discovered documentation into workspace files (`api_manual.md`), and track milestones via working memory (`todos.md`).
+- **Anti-Pattern: Negative Constraint Fixation (The "Pink Elephant" Trap):** Framing instructions as negative prohibitions ("Never do X", "Do not call Y") for tools or capabilities the agent does not possess in its toolset (e.g., forbidding direct curl/HTTP requests when only structured tools are declared).
+  - *Risks:* In autoregressive language models, mentioning a forbidden concept forces attention heads to activate token associations for that very concept (*Pink Elephant Paradox*). This wastes prompt token budget and increases the probability of unintended execution or confusion.
+  - *Proper Pattern:* **Positive Functional Priming.** Define strictly what the agent *should* do using canonical syntax prototypes. If an action or tool is disallowed, simply exclude it from the toolset; never pollute prompts with negative constraints on non-existent capabilities.
 
 ### Cloud Run Gold Standards
 To ensure consistent deployment and runtime behavior across all microservices:
