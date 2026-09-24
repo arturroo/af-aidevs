@@ -236,3 +236,11 @@ download_images.py
 # Terraform Zips
 **/.zips/
 /terraform/.zips/
+
+# Local execution notes & unanonymized flags (persisted in GCS workspaces)
+run_notes.txt
+**/run_notes.txt
+
+# Local workspace staging directories
+workspace/
+**/workspace/
