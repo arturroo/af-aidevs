@@ -99,6 +99,9 @@ variable "datasets" {
         "s04e03" = {
             description = "Dataset for S04E03 Domatowo tactical search and rescue tasks"
         }
+        "s04e04" = {
+            description = "Dataset for S04E04 virtual filesystem knowledge base tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -210,6 +213,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S04E03 Domatowo tactical search and rescue service"
             dataset_id  = "s04e03"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s04e04_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S04E04 virtual filesystem knowledge base service"
+            dataset_id  = "s04e04"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -979,6 +988,43 @@ variable "cr_names" {
                              "roles/aiplatform.user"]
             dataset_roles = {
                 "s04e03" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-mcp-workspace"   = ["roles/run.invoker"]
+                "cr-mcp-web-gateway" = ["roles/run.invoker"]
+                "cr-model-armor"     = ["roles/run.invoker"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
+                MODEL_ARMOR_URL     = "MODEL_ARMOR_URL"
+                MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
+                MCP_WEB_GATEWAY_URL = "MCP_WEB_GATEWAY_URL"
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s04e04-filesystem" = {
+            description   = "S04E04 virtual filesystem knowledge base reconstructor service"
+            image_name    = "cr-s04e04-filesystem"
+            source_dir    = "../lessons/s04e04-projektowanie-wlasnej-bazy-wiedzy-dla-ai/task/cr-s04e04-filesystem"
+            public        = false
+            env_vars      = {
+                BACKEND                 = "langchain"
+                BQ_DATASET              = "s04e04"
+                BQ_TABLE                = "audit"
+                BQ_AUDIT_TABLE          = "af-aidevs.s04e04.audit"
+                GEMINI_MODEL            = "gemini-3.8-flash"
+                GEMINI_FLASH_LITE_MODEL = "gemini-3.8-flash-lite"
+                THINKING_LEVEL          = "low"
+                LANGSMITH_TRACING       = "true"
+                LANGSMITH_ENDPOINT      = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s04e04" = ["roles/bigquery.dataEditor"]
             }
             cr_roles = {
                 "cr-mcp-workspace"   = ["roles/run.invoker"]
