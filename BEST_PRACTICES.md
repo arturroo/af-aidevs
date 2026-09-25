@@ -509,6 +509,45 @@ Saving local execution summaries (`run_notes.txt`) inside lesson source folders 
 
 ---
 
+### 4.10 Pragmatic Architectural Agility: Dynamic Runtime Overrides vs. The Deployment Lag Antipattern in Agent Development
+**Added:** 2026-09-25  
+**Context:** Rapid debugging, cost control, model quota saturation (HTTP 429), and benchmark agility across Cloud Run task microservices.
+
+#### The Dilemma: Best Practice, Anti-Pattern, or Pragmatic Pattern?
+In strict classical enterprise architecture for public, consumer-facing APIs, allowing client requests to dictate backend infrastructure parameters (e.g. underlying LLM model, execution loop limits, reasoning depth) is often considered an **encapsulation anti-pattern** or economic risk:
+1. **Denial-of-Wallet Risk:** Malicious or buggy clients could request expensive frontier models (e.g., `gemini-1.5-pro` / `gemini-3.8-pro` with `high` thinking) and high recursion limits, driving cloud bills through the roof.
+2. **SLA & Resource Unpredictability:** SLOs and Cloud Run autoscaling policies rely on bounded execution envelopes.
+3. **Leaky Abstraction:** External consumers should not need to care about internal orchestration choices.
+
+#### The Reality in Agentic Development & Evaluation: The "Deployment Lag" Antipattern
+In internal developer platforms, evaluation harnesses, laboratory testbeds, and private agent microservices (authenticated via IAM / OIDC), treating LLM configuration as an immutable build-time artifact baked into container images or static environment variables creates the **Deployment Lag Antipattern**:
+- **3-5 Minute Feedback Cycles:** Changing a single parameter (e.g. testing `gemini-3.5-flash-lite` vs `gemini-3.8-flash`, testing `thinking_level="low"` vs `thinking_level="medium"`, or raising `max_iterations` from 40 to 100) forces a full container rebuild, Artifact Registry push, and Terraform / Cloud Run redeploy.
+- **Quota Saturation Paralysis:** When Vertex AI throttles a specific model or region (HTTP 429 `RESOURCE_EXHAUSTED`), engineers are dead in the water without redeploying code.
+- **Evaluation Friction:** Comparing model performance or iteration budgets across identical task datasets requires multiple separate service deployments or code branches.
+
+#### The Recommended Standard: Pragmatic Dynamic Overrides
+Every task microservice exposes optional overrides with safe defaults in its canonical `RunTaskRequest` schema and CLI runner:
+- `model: str | None = None` (fallback: `config.GEMINI_MODEL`)
+- `max_iterations: int | None = None` (fallback: `config.MAX_AGENT_ITERATIONS`)
+- `thinking_level: Literal["low", "medium", "high"] | None = None` (fallback: `config.THINKING_LEVEL`)
+
+```python
+# Canonical schema in schemas.py
+class RunTaskRequest(BaseModel):
+    backend: Literal["langchain", "adk"] = "langchain"
+    session_id: str | None = None
+    model: str | None = None
+    max_iterations: int | None = None
+    thinking_level: Literal["low", "medium", "high"] | None = None
+```
+
+#### Key Architectural Takeaways:
+1. **Zero-Redeploy Debugging & Benchmarking:** Slashes iteration cycle time from ~3–5 minutes (container build + deploy) down to **0 seconds** (instantaneous per-request parameter injection).
+2. **Quota Resilience:** Instantly bypasses regional or model-specific Vertex AI 429 throttles by switching models on the fly in `POST /run` without modifying Terraform state.
+3. **Defense-in-Depth for Production:** In production enterprise environments, this pattern is safely retained by restricting override headers to authenticated developer/admin roles or feature flags, rather than stripping it away and reverting to painful redeploy cycles.
+
+---
+
 ## 5. Optimization & Benchmark Log
 
 | Date | Topic | Optimization / Insight | Benefit |
@@ -533,5 +572,7 @@ Saving local execution summaries (`run_notes.txt`) inside lesson source folders 
 | **2026-09-24** | Service Resilience | Deterministic Self-Healing (Try-Except-Delete-Recreate) | Absorbed non-idempotent API conflicts in client code, saving unnecessary LLM repair loops. |
 | **2026-09-24** | LLM Observability | Granular Entity-Level Observability in Pipelines | Slashed MTTR to **< 5s** in Cloud Logging using structured `[PASS]`/`[FAIL]` entity counters. |
 | **2026-09-24** | Security Architecture | GCS Workspace Persistence vs. `run_notes.txt` Git Leaks | Eliminated secret flag leakage risk by isolating execution notes to private GCS buckets. |
+| **2026-09-25** | Agent Architecture & DevEx | Pragmatic Dynamic Overrides vs. Deployment Lag | Slashed debug cycle from **~3–5 min to 0s** (zero redeploy); enables instant quota (429) bypass and model benchmarking. |
+
 
 

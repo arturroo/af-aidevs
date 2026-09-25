@@ -23,8 +23,13 @@ To keep the structure scalable, readable, and perfectly sorted (just as we do at
 - GCP standards: BigQuery (`bq`), Firestore (`fs`), Cloud Functions entry point is always `main()`.
 - **Cloud Run Task Microservice Standards:** Every Cloud Run microservice implementing a lesson task MUST provide:
   - `@app.get("/health")` and `@app.get("/")`: Canonical health check and service readiness status endpoints.
-  - `@app.post("/run", response_model=RunTaskResponse)`: Canonical execution endpoint accepting `RunTaskRequest(backend=..., session_id=...)`.
-  - **CLI Mode:** Always implement a `run_cli()` entrypoint in `main.py` enabling direct local execution via `uv run python main.py --backend [langchain|adk]`.
+  - `@app.post("/run", response_model=RunTaskResponse)`: Canonical execution endpoint accepting `RunTaskRequest(backend=..., session_id=..., model=..., max_iterations=..., thinking_level=...)`.
+  - **Dynamic Runtime Overrides for Fast Debugging & Evaluation (`RunTaskRequest` & CLI):** Every microservice MUST support dynamic runtime overrides in `RunTaskRequest` and CLI arguments:
+    - `model: str | None = None` (e.g. `"gemini-3.5-flash-lite"`, `"gemini-3.8-flash"`) — enables testing alternative models or bypassing regional/model quota saturation (HTTP 429) without redeploying containers.
+    - `max_iterations: int | None = None` (e.g. `50`, `100`, `120`) — enables tuning agent loop depth on the fly without updating config files.
+    - `thinking_level: Literal["low", "medium", "high"] | None = None` — enables testing reflection depth impact on latency and token economics.
+    - *Rationale:* While unbounded client model selection can be a cost/abuse risk in public commercial APIs, in laboratory, evaluation, and agent development environments it is an indispensable operational agility standard: it eliminates multi-minute container rebuilds during debugging, enables instantaneous model benchmarking, and provides zero-downtime workarounds during upstream quota exhaustion.
+  - **CLI Mode:** Always implement a `run_cli()` entrypoint in `main.py` enabling direct local execution via `uv run python main.py --backend [langchain|adk] --model [...] --thinking-level [low|medium|high] --max-iterations [...]`.
   - **Testing Private Cloud Run Endpoints via curl (PowerShell):** Microservices are deployed privately (`public = false`), requiring an OIDC Identity Token. In Windows PowerShell, use `curl.exe` to avoid conflicts with PowerShell's built-in `curl` alias (`Invoke-WebRequest`):
     - **Health Check (`GET /health`):**
       ```powershell
