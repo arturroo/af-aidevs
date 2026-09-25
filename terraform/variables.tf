@@ -102,6 +102,9 @@ variable "datasets" {
         "s04e04" = {
             description = "Dataset for S04E04 virtual filesystem knowledge base tasks"
         }
+        "s04e05" = {
+            description = "Dataset for S04E05 food warehouse autonomous logistics distribution tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -219,6 +222,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S04E04 virtual filesystem knowledge base service"
             dataset_id  = "s04e04"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s04e05_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S04E05 food warehouse autonomous logistics distribution service"
+            dataset_id  = "s04e05"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -1025,6 +1034,50 @@ variable "cr_names" {
                              "roles/aiplatform.user"]
             dataset_roles = {
                 "s04e04" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-mcp-workspace"   = ["roles/run.invoker"]
+                "cr-mcp-web-gateway" = ["roles/run.invoker"]
+                "cr-model-armor"     = ["roles/run.invoker"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
+                MODEL_ARMOR_URL     = "MODEL_ARMOR_URL"
+                MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
+                MCP_WEB_GATEWAY_URL = "MCP_WEB_GATEWAY_URL"
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s04e05-foodwarehouse" = {
+            description   = "S04E05 food warehouse autonomous logistics distribution service"
+            image_name    = "cr-s04e05-foodwarehouse"
+            source_dir    = "../lessons/s04e05-projektowanie-rozwiazan-wewnatrzfirmowych/task/cr-s04e05-foodwarehouse"
+            cpu           = "1"
+            memory        = "1Gi"
+            public        = false
+            cpu_idle      = true
+            max_instances = 1
+            concurrency   = 80
+            timeout       = "600s"
+            use_pack      = false
+            env_vars      = {
+                BACKEND                 = "langchain"
+                BQ_DATASET              = "s04e05"
+                BQ_TABLE                = "audit"
+                BQ_AUDIT_TABLE          = "af-aidevs.s04e05.audit"
+                GEMINI_MODEL            = "gemini-3.5-flash-lite"
+                GEMINI_FLASH_LITE_MODEL = "gemini-3.5-flash-lite"
+                THINKING_LEVEL          = "medium"
+                LANGSMITH_TRACING       = "true"
+                LANGSMITH_ENDPOINT      = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s04e05" = ["roles/bigquery.dataEditor"]
             }
             cr_roles = {
                 "cr-mcp-workspace"   = ["roles/run.invoker"]
