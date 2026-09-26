@@ -1,0 +1,11 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+.env
+.env.*
+tests
+.pytest_cache
+workspace
+run_notes.txt

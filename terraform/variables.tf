@@ -105,6 +105,9 @@ variable "datasets" {
         "s04e05" = {
             description = "Dataset for S04E05 food warehouse autonomous logistics distribution tasks"
         }
+        "s05e01" = {
+            description = "Dataset for S05E01 radiomonitoring and multimodal scatter-gather ingestion tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -228,6 +231,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S04E05 food warehouse autonomous logistics distribution service"
             dataset_id  = "s04e05"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s05e01_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S05E01 radiomonitoring microservice"
+            dataset_id  = "s05e01"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -1078,6 +1087,51 @@ variable "cr_names" {
                              "roles/aiplatform.user"]
             dataset_roles = {
                 "s04e05" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-mcp-workspace"   = ["roles/run.invoker"]
+                "cr-mcp-web-gateway" = ["roles/run.invoker"]
+                "cr-model-armor"     = ["roles/run.invoker"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
+                MODEL_ARMOR_URL     = "MODEL_ARMOR_URL"
+                MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
+                MCP_WEB_GATEWAY_URL = "MCP_WEB_GATEWAY_URL"
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s05e01-radiomonitoring" = {
+            description   = "S05E01 radiomonitoring and multimodal scatter-gather ingestion service"
+            image_name    = "cr-s05e01-radiomonitoring"
+            source_dir    = "../lessons/s05e01-architektura/task/cr-s05e01-radiomonitoring"
+            cpu           = "1"
+            memory        = "1Gi"
+            public        = false
+            cpu_idle      = true
+            max_instances = 1
+            concurrency   = 80
+            timeout       = "600s"
+            use_pack      = false
+            env_vars      = {
+                BACKEND                   = "langchain"
+                BQ_DATASET                = "s05e01"
+                BQ_TABLE                  = "audit"
+                BQ_AUDIT_TABLE            = "af-aidevs.s05e01.audit"
+                GEMINI_MODEL              = "gemini-3.8-flash"
+                ENRICHMENT_MODEL          = "gemini-3.5-flash-lite"
+                THINKING_LEVEL            = "low"
+                ENRICHMENT_THINKING_LEVEL = "medium"
+                LANGSMITH_TRACING         = "true"
+                LANGSMITH_ENDPOINT        = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s05e01" = ["roles/bigquery.dataEditor"]
             }
             cr_roles = {
                 "cr-mcp-workspace"   = ["roles/run.invoker"]
