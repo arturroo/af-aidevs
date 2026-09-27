@@ -244,3 +244,13 @@ run_notes.txt
 # Local workspace staging directories
 workspace/
 **/workspace/
+
+# Audio binaries
+*.mp3
+*.wav
+*.ogg
+**/voice_samples/*.mp3
+
+# Scratch test files
+test_tts.py
+**/test_tts.py

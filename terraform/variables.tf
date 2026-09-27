@@ -108,6 +108,9 @@ variable "datasets" {
         "s05e01" = {
             description = "Dataset for S05E01 radiomonitoring and multimodal scatter-gather ingestion tasks"
         }
+        "s05e02" = {
+            description = "Dataset for S05E02 conversational voice agent phonecall tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -237,6 +240,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S05E01 radiomonitoring microservice"
             dataset_id  = "s05e01"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s05e02_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S05E02 conversational voice agent phonecall microservice"
+            dataset_id  = "s05e02"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -1144,6 +1153,45 @@ variable "cr_names" {
                 MODEL_ARMOR_URL     = "MODEL_ARMOR_URL"
                 MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
                 MCP_WEB_GATEWAY_URL = "MCP_WEB_GATEWAY_URL"
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s05e02-phonecall" = {
+            description   = "S05E02 Conversational Voice Agent Phonecall Microservice"
+            image_name    = "cr-s05e02-phonecall"
+            source_dir    = "../lessons/s05e02-zestaw-narzedzi/task/cr-s05e02-phonecall"
+            cpu           = "1"
+            memory        = "1Gi"
+            public        = false
+            cpu_idle      = true
+            max_instances = 1
+            concurrency   = 80
+            timeout       = "600s"
+            use_pack      = false
+            env_vars      = {
+                GOOGLE_CLOUD_PROJECT = "af-aidevs"
+                GOOGLE_CLOUD_LOCATION= "global"
+                BQ_DATASET           = "s05e02"
+                BQ_TABLE             = "audit"
+                BQ_AUDIT_TABLE       = "af-aidevs.s05e02.audit"
+                GEMINI_MODEL         = "gemini-3.8-flash"
+                THINKING_LEVEL       = "low"
+                DEFAULT_VOICE_NAME   = "pl-PL-Neural2-B"
+                DEFAULT_SPEAKING_RATE= "1.05"
+                LANGSMITH_TRACING    = "true"
+                LANGSMITH_ENDPOINT   = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s05e02" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {}
+            secrets       = {
+                LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
                 AIDEVS_API_KEY      = "AIDEVS_API_KEY"
                 AIDEVS_VERIFY       = "AIDEVS_VERIFY"
             }

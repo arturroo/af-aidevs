@@ -548,7 +548,115 @@ class RunTaskRequest(BaseModel):
 
 ---
 
-## 5. Optimization & Benchmark Log
+---
+
+## 5. Conversational Voice Agents & Behavioral Dialogue Engineering
+
+### 5.1 Deterministic Finite State Machines (FSM) vs. Declarative `DialogueState` (Slot-Filling / Blackboard Architecture)
+**Added:** 2026-09-27  
+**Context:** Multi-turn telephony and audio-mediated conversational agents (`cr-s05e02-phonecall`).
+
+#### The Problem:
+*When orchestrating complex multi-turn voice conversations with human operators or strict external APIs, should we model conversation flow using a classic Finite State Machine (FSM), a fully autonomous LLM agent loop (ReAct), or a declarative `DialogueState` (Slot-Filling / Blackboard Architecture)?*
+
+#### Comparison & Failure Modes:
+
+```
++--------------------------------------------------------------------------------------------------+
+| FINITE STATE MACHINE (FSM)                                                                       |
+| Model: Sequential / Step-by-step block diagram (State A -> State B -> State C).                 |
+| Pitfall: COMBINATORIAL STATE EXPLOSION & BRITTLE LOCKOUTS.                                       |
+| In real conversations, an interlocutor frequently supplies answers and demands authorization     |
+| simultaneously ("RD472 is clear, but who authorized you and what is your clearance code?").     |
+| A rigid FSM expecting only State B drops the authorization challenge or fails transition rules.  |
++--------------------------------------------------------------------------------------------------+
+
++--------------------------------------------------------------------------------------------------+
+| AUTONOMOUS AGENT LOOP (ReAct / Free-Form Tools)                                                  |
+| Model: Unbounded cognitive loop where LLM chooses tools and turn order dynamically.             |
+| Pitfall: PROTOCOL DRIFT & PREMATURE SECRET LEAKAGE.                                              |
+| Autonomous agents prone to turn-order hallucinations, premature secret disclosure (blurting out  |
+| passwords before requested), or overly conversational verbosity that violates API length limits. |
++--------------------------------------------------------------------------------------------------+
+
++--------------------------------------------------------------------------------------------------+
+| DECLARATIVE DIALOGUESTATE (SLOT-FILLING / BLACKBOARD) - ACCEPTED BEST PRACTICE                    |
+| Model: Declarative milestone checklist (like a Gantt chart or goal blackboard).                  |
+| Mechanics:                                                                                       |
+| 1. Multimodal Extraction: LLM analyzes incoming utterance into structured slots (Pydantic).       |
+| 2. Deterministic Policy Engine: Pure Python decision rules calculate the next Turn Objective.    |
+| 3. Conditioned Generation: LLM synthesizes natural phrasing laser-focused on that single goal.   |
+| Benefit: 100% deterministic protocol compliance with full resilience to compound utterances.      |
++--------------------------------------------------------------------------------------------------+
+```
+
+#### Key Engineering Takeaways:
+1. **The "Gantt Chart" Mental Model:** Treat conversational goals as independent milestone slots (`opening_sent`, `passable_road_identified`, `auth_code_provided`, `monitoring_deactivation_requested`). Multiple slots can be fulfilled in a single turn without breaking workflow integrity.
+2. **De-escalation Loops via Behavioral Affect Modeling:** Track `operator_suspicious` (`Literal["low", "medium", "high", "critical"]`). If suspicion spikes, the Policy Engine dynamically prioritizes a de-escalation objective (e.g. food transport cover story) to reset suspicion back to safe levels before proceeding with sensitive requests.
+3. **Decouple Understanding from Generation:** Never force a single LLM call to simultaneously parse audio, update state, decide strategy, and generate speech. Use structured Pydantic extraction for understanding, Python for deterministic state transitions, and a conditioned LLM prompt for speech generation.
+
+---
+
+### 5.2 Prompt Topology for Conversational KV-Cache Prefix Matching & Attention Recency Bias
+**Added:** 2026-09-27  
+**Context:** Optimizing Time-To-First-Token (TTFT), inference cost, and instruction-following in multi-turn voice conversations.
+
+#### The Problem:
+*Where should conversation history, static rules, and dynamic turn objectives be placed within the prompt template to maximize context caching efficiency and minimize model distraction?*
+
+#### Architectural Analysis:
+1. **Hardware Prefix Caching (KV-Cache Reuse):**
+   Modern LLM serving engines (vLLM, Vertex AI, TPU v5e/v6e) utilize left-to-right prefix caching. If the beginning of the prompt changes between turns, the entire KV-cache is invalidated, triggering costly full attention recomputation.
+2. **Transformer Attention Recency Effect (Attention Sink & Recency Bias):**
+   In dense self-attention, tokens located at the extreme beginning (primacy effect / attention sink) and extreme end (recency effect) of the context window receive the highest attention weights. Mid-context tokens suffer from *Lost in the Middle* attenuation.
+
+#### Canonical Prompt Layout Standard:
+
+```
++------------------------------------------------------------------------------+
+| 1. STATIC PERSONA & IMMUTABLE RULES (TOP - 100% KV-CACHE PREFIX HIT)        |
+| - Operative Identity (Tymon Gajewski)                                        |
+| - Brevity limits (max 1-2 sentences)                                         |
+| - SSML formatting directives                                                 |
+| -> NEVER CHANGES ACROSS TURNS. Reuses 100% of precomputed KV-cache.          |
++------------------------------------------------------------------------------+
+| 2. CONVERSATION HISTORY (MIDDLE - SEQUENTIALLY APPENDED PREFIX EXTENSION)    |
+| - Turn 1: Agent -> Operator                                                  |
+| - Turn 2: Operator -> Agent                                                  |
+| -> Grows strictly append-only, preserving the cached prefix from prior turn. |
++------------------------------------------------------------------------------+
+| 3. IMMEDIATE UTTERANCE & TURN OBJECTIVE (BOTTOM - MAXIMUM RECENCY WEIGHT)    |
+| - OSTATNIA WYPOWIEDŹ OPERATORA: "{transcript}"                               |
+| - CEL TEJ TURY: {current_objective.instruction}                              |
+| -> Placed immediately prior to generation, conditioning output directly.     |
++------------------------------------------------------------------------------+
+```
+
+---
+
+### 5.3 Cloud Run Async Concurrency & State Isolation: The Mutable Default Trap
+**Added:** 2026-09-27  
+**Context:** High-throughput serverless microservices handling concurrent requests (`concurrency = 80`).
+
+#### The Problem:
+*In a Cloud Run container configured with `concurrency = 80`, does each incoming HTTP request run in an isolated Python process? How does this impact mutable default values in Pydantic models?*
+
+#### Architectural Mechanics:
+1. **Single Container, Single Python Process:**
+   In Google Cloud Run, concurrency (e.g. 80) does **not** spawn 80 separate containers or OS processes. A single container instance runs a single Uvicorn server executing FastAPI endpoints asynchronously on a single Python asyncio event loop. The container process remains active in memory for 10–15+ minutes across multiple requests.
+2. **The Mutable Default Trap (`Field(default={})`):**
+   Class definitions in Python are evaluated once at module load time. If a Pydantic model or dataclass defines a mutable default attribute via `roads: dict = {}`, that dictionary instance is bound to the class object in process RAM. Across concurrent requests, modifying `state.roads` in Request A directly pollutes the state of Request B!
+3. **The Canonical Remedy (`Field(default_factory=...)`):**
+   Always declare mutable collections (`dict`, `list`, `set`) using callable factories:
+   ```python
+   class DialogueState(BaseModel):
+       # Safe: Generates a fresh, isolated dict for every instantiated session
+       roads: dict[str, RoadAssessment] = Field(default_factory=dict)
+   ```
+
+---
+
+## 6. Optimization & Benchmark Log
 
 | Date | Topic | Optimization / Insight | Benefit |
 | :--- | :--- | :--- | :--- |
@@ -573,6 +681,10 @@ class RunTaskRequest(BaseModel):
 | **2026-09-24** | LLM Observability | Granular Entity-Level Observability in Pipelines | Slashed MTTR to **< 5s** in Cloud Logging using structured `[PASS]`/`[FAIL]` entity counters. |
 | **2026-09-24** | Security Architecture | GCS Workspace Persistence vs. `run_notes.txt` Git Leaks | Eliminated secret flag leakage risk by isolating execution notes to private GCS buckets. |
 | **2026-09-25** | Agent Architecture & DevEx | Pragmatic Dynamic Overrides vs. Deployment Lag | Slashed debug cycle from **~3–5 min to 0s** (zero redeploy); enables instant quota (429) bypass and model benchmarking. |
+| **2026-09-27** | Conversational Architecture | Declarative `DialogueState` Slot-Filling vs. Rigid FSM | Eliminates multi-intent failure and turn order hallucinations in conversational voice agents. |
+| **2026-09-27** | Prompt Engineering | Prefix KV-Cache Caching & Attention Recency Alignment | Maximizes hardware context cache hits while grounding model generation on immediate turn objective. |
+| **2026-09-27** | Cloud Run Architecture | Mutable Default Memory Isolation in High-Concurrency Async Containers | Guarantees zero cross-session data leaks across 80 concurrent connections. |
+
 
 
 
