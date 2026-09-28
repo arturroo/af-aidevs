@@ -111,6 +111,9 @@ variable "datasets" {
         "s05e02" = {
             description = "Dataset for S05E02 conversational voice agent phonecall tasks"
         }
+        "s05e03" = {
+            description = "Dataset for S05E03 remote shell access and time archive investigation tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -246,6 +249,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S05E02 conversational voice agent phonecall microservice"
             dataset_id  = "s05e02"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s05e03_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S05E03 remote shell access microservice"
+            dataset_id  = "s05e03"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -1036,7 +1045,7 @@ variable "cr_names" {
             image_name    = "cr-s04e04-filesystem"
             source_dir    = "../lessons/s04e04-projektowanie-wlasnej-bazy-wiedzy-dla-ai/task/cr-s04e04-filesystem"
             public        = false
-            env_vars      = {
+            env           = {
                 BACKEND                 = "langchain"
                 BQ_DATASET              = "s04e04"
                 BQ_TABLE                = "audit"
@@ -1080,7 +1089,7 @@ variable "cr_names" {
             concurrency   = 80
             timeout       = "600s"
             use_pack      = false
-            env_vars      = {
+            env           = {
                 BACKEND                 = "langchain"
                 BQ_DATASET              = "s04e05"
                 BQ_TABLE                = "audit"
@@ -1124,7 +1133,7 @@ variable "cr_names" {
             concurrency   = 80
             timeout       = "600s"
             use_pack      = false
-            env_vars      = {
+            env           = {
                 BACKEND                   = "langchain"
                 BQ_DATASET                = "s05e01"
                 BQ_TABLE                  = "audit"
@@ -1169,7 +1178,7 @@ variable "cr_names" {
             concurrency   = 80
             timeout       = "600s"
             use_pack      = false
-            env_vars      = {
+            env           = {
                 GOOGLE_CLOUD_PROJECT = "af-aidevs"
                 GOOGLE_CLOUD_LOCATION= "global"
                 BQ_DATASET           = "s05e02"
@@ -1192,6 +1201,48 @@ variable "cr_names" {
             secrets       = {
                 LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
                 LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s05e03-shellaccess" = {
+            description   = "S05E03 Remote Shell Access and Time Archive Investigation Microservice"
+            image_name    = "cr-s05e03-shellaccess"
+            source_dir    = "../lessons/s05e03-rozwoj-funkcjonalnosci/task/cr-s05e03-shellaccess"
+            cpu           = "1"
+            memory        = "1Gi"
+            public        = false
+            cpu_idle      = true
+            max_instances = 1
+            concurrency   = 80
+            timeout       = "600s"
+            use_pack      = false
+            env           = {
+                GOOGLE_CLOUD_PROJECT = "af-aidevs"
+                GOOGLE_CLOUD_LOCATION= "global"
+                BQ_DATASET           = "s05e03"
+                BQ_TABLE             = "audit"
+                BQ_AUDIT_TABLE       = "af-aidevs.s05e03.audit"
+                GEMINI_MODEL         = "gemini-3.8-flash"
+                THINKING_LEVEL       = "low"
+                OUTPUT_CHAR_LIMIT    = "4000"
+                MAX_ITERATIONS       = "30"
+                LANGSMITH_TRACING    = "true"
+                LANGSMITH_ENDPOINT   = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s05e03" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-mcp-workspace" = ["roles/run.invoker"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
+                MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
                 AIDEVS_API_KEY      = "AIDEVS_API_KEY"
                 AIDEVS_VERIFY       = "AIDEVS_VERIFY"
             }
