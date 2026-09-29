@@ -1,0 +1,29 @@
+[project]
+name = "cr-s05e05-cockpit"
+version = "0.1.0"
+description = "CHRONOS-P1 Cockpit Actuator Microservice"
+readme = "README.md"
+requires-python = "==3.13.5"
+dependencies = [
+    "fastapi==0.115.11",
+    "httpx==0.28.1",
+    "playwright==1.50.0",
+    "pydantic==2.10.6",
+    "uvicorn==0.34.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy==1.15.0",
+    "pytest==8.3.5",
+    "pytest-asyncio==0.25.3",
+    "ruff==0.9.10",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff.lint]
+ignore = ["BLE001"]
+
