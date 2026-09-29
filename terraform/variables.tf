@@ -117,6 +117,9 @@ variable "datasets" {
         "s05e04" = {
             description = "Dataset for S05E04 autonomous rocket navigation tasks"
         }
+        "s05e05" = {
+            description = "Dataset for S05E05 temporal displacement tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -264,6 +267,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S05E04 autonomous rocket navigation microservice"
             dataset_id  = "s05e04"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s05e05_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S05E05 temporal displacement microservice"
+            dataset_id  = "s05e05"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -1297,6 +1306,66 @@ variable "cr_names" {
                 MODEL_ARMOR_URL              = "MODEL_ARMOR_URL"
                 AIDEVS_API_KEY      = "AIDEVS_API_KEY"
                 AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s05e05-cockpit" = {
+            image_name    = "cr-s05e05-cockpit"
+            source_dir    = "../lessons/s05e05-nowa-rzeczywistosc/task/cr-s05e05-cockpit"
+            cpu           = "2"
+            memory        = "2Gi"
+            public        = false
+            cpu_idle      = true
+            max_instances = 1
+            concurrency   = 10
+            timeout       = "300s"
+            use_pack      = false
+            env           = {
+                GOOGLE_CLOUD_PROJECT = "af-aidevs"
+                GOOGLE_CLOUD_LOCATION= "global"
+                AIDEVS_TIMETRAVEL_PREVIEW_URL = "https://hub.ag3nts.org/timetravel_preview"
+                AIDEVS_TIMETRAVEL_BACKEND_URL = "https://hub.ag3nts.org/timetravel_backend"
+                AIDEVS_API_VERIFY             = "https://hub.ag3nts.org/verify"
+            }
+            roles         = ["roles/secretmanager.secretAccessor"]
+            secrets       = {
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s05e05-director" = {
+            image_name    = "cr-s05e05-director"
+            source_dir    = "../lessons/s05e05-nowa-rzeczywistosc/task/cr-s05e05-director"
+            cpu           = "1"
+            memory        = "1Gi"
+            public        = false
+            cpu_idle      = true
+            max_instances = 1
+            concurrency   = 80
+            timeout       = "600s"
+            use_pack      = false
+            env           = {
+                GOOGLE_CLOUD_PROJECT = "af-aidevs"
+                GOOGLE_CLOUD_LOCATION= "global"
+                BQ_DATASET           = "s05e05"
+                BQ_TABLE             = "audit"
+                BIGQUERY_DATASET     = "s05e05"
+                BIGQUERY_TABLE       = "audit"
+                GEMINI_MODEL         = "gemini-3.5-flash-lite"
+                THINKING_LEVEL       = "low"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s05e05" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-s05e05-cockpit" = ["roles/run.invoker"]
+            }
+            secrets       = {
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+                COCKPIT_SERVICE_URL = "COCKPIT_SERVICE_URL"
             }
         }
     }
