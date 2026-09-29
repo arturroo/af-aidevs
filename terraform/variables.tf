@@ -114,6 +114,9 @@ variable "datasets" {
         "s05e03" = {
             description = "Dataset for S05E03 remote shell access and time archive investigation tasks"
         }
+        "s05e04" = {
+            description = "Dataset for S05E04 autonomous rocket navigation tasks"
+        }
         "ai_governance" = {
             description = "Dataset for global AI governance and auditing"
         }
@@ -255,6 +258,12 @@ variable "internal_tables" {
             table_id    = "audit"
             description = "Audit logs for S05E03 remote shell access microservice"
             dataset_id  = "s05e03"
+            schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
+        }
+        "s05e04_audit" = {
+            table_id    = "audit"
+            description = "Audit logs for S05E04 autonomous rocket navigation microservice"
+            dataset_id  = "s05e04"
             schema      = "bq-schemas/s01e04.audit.json" # Reusing schema
         }
         "audit_stdout" = {
@@ -1243,6 +1252,49 @@ variable "cr_names" {
                 LANGSMITH_API_KEY   = "LANGSMITH_API_KEY"
                 LANGSMITH_PROJECT   = "LANGSMITH_PROJECT"
                 MCP_WORKSPACE_URL   = "MCP_WORKSPACE_URL"
+                AIDEVS_API_KEY      = "AIDEVS_API_KEY"
+                AIDEVS_VERIFY       = "AIDEVS_VERIFY"
+            }
+        }
+        "cr-s05e04-goingthere" = {
+            image_name    = "cr-s05e04-goingthere"
+            source_dir    = "../lessons/s05e04-produkcja/task/cr-s05e04-goingthere"
+            cpu           = "1"
+            memory        = "1Gi"
+            public        = false
+            cpu_idle      = true
+            max_instances = 1
+            concurrency   = 80
+            timeout       = "600s"
+            use_pack      = false
+            env           = {
+                GOOGLE_CLOUD_PROJECT = "af-aidevs"
+                GOOGLE_CLOUD_LOCATION= "global"
+                BQ_DATASET           = "s05e04"
+                BQ_TABLE             = "audit"
+                BQ_AUDIT_TABLE       = "af-aidevs.s05e04.audit"
+                GEMINI_MODEL         = "gemini-3.5-flash-lite"
+                THINKING_LEVEL       = "medium"
+                LANGSMITH_TRACING    = "true"
+                LANGSMITH_ENDPOINT   = "https://eu.api.smith.langchain.com"
+            }
+            roles         = ["roles/bigquery.jobUser", 
+                             "roles/secretmanager.secretAccessor", 
+                             "roles/aiplatform.user"]
+            dataset_roles = {
+                "s05e04" = ["roles/bigquery.dataEditor"]
+            }
+            cr_roles = {
+                "cr-mcp-workspace"   = ["roles/run.invoker"]
+                "cr-mcp-web-gateway" = ["roles/run.invoker"]
+                "cr-model-armor"     = ["roles/run.invoker"]
+            }
+            secrets       = {
+                LANGSMITH_API_KEY            = "LANGSMITH_API_KEY"
+                LANGSMITH_PROJECT            = "LANGSMITH_PROJECT"
+                MCP_WORKSPACE_URL            = "MCP_WORKSPACE_URL"
+                MCP_WEB_GATEWAY_URL          = "MCP_WEB_GATEWAY_URL"
+                MODEL_ARMOR_URL              = "MODEL_ARMOR_URL"
                 AIDEVS_API_KEY      = "AIDEVS_API_KEY"
                 AIDEVS_VERIFY       = "AIDEVS_VERIFY"
             }
