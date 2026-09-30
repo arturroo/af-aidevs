@@ -46,7 +46,7 @@ All agent workloads, tooling gateways, and security filters are containerized us
 
 ### Fleet Overview & Architectural Roles
 
-| Category | Microservices | Architecture Role & Capabilities |
+| Category | Deployed&nbsp;Microservices&nbsp;(Cloud&nbsp;Run) | Architecture Role & Capabilities |
 | :--- | :--- | :--- |
 | **Core MCP & Security Gateways** | `cr-mcp-workspace`<br>`cr-mcp-web-gateway`<br>`cr-model-armor` | Central FastMCP server for session-isolated GCS file operations and document RAG; outbound HTTP proxy gateway; active prompt-injection firewall (PEP). |
 | **Season 1: Foundation & Interaction** | `cr-s01e03-agent`<br>`cr-s01e03-mcp-server`<br>`cr-s01e05-agent` | Calibration and data validation agents; local MCP server integration; production agent interaction pipelines. |
