@@ -38,7 +38,7 @@ The security architecture operates as an active **runtime gate** controlling age
 
 ---
 
-## 🌐 Production Fleet: 26 Serverless Microservices on GCP
+## 🌐 Production Fleet: 27 Serverless Microservices on GCP
 
 All agent workloads, tooling gateways, and security filters are containerized using `python:3.13.5-slim`, provisioned via Terraform, and deployed as serverless microservices to **Google Cloud Run** in the **`europe-west6` (Zurich)** region. 
 
@@ -62,7 +62,7 @@ All agent workloads, tooling gateways, and security filters are containerized us
 
 ## 💰 Enterprise FinOps & Token Economics Benchmark
 
-A cornerstone of modern AI engineering is building robust, high-performance systems while enforcing strict **financial predictability (FinOps)**. Across the entire 5-season curriculum—spanning dozens of complex autonomous loops, multimodal analysis, high-concurrency tool calls, and automated evaluation—the entire platform operated on Google Cloud for a net monthly cost of **CHF 11.66** (~$13.50 USD).
+A cornerstone of modern AI engineering is building robust, high-performance systems while enforcing strict **financial predictability (FinOps)**. Across the entire 5-season curriculum—spanning dozens of complex autonomous loops, multimodal analysis, high-concurrency tool calls, and automated evaluation—the entire platform operated on Google Cloud for a net monthly cost of **CHF 11.66**.
 
 <div align="center">
 
@@ -100,7 +100,7 @@ In the billing records, cached input tokens are billed under dedicated `Text Inp
 > **Key Architectural Takeaways:**
 > 1. **Prompt Context Caching as a First-Class Citizen:** Dynamic temporal context (`get_current_date()`) is exposed via tools rather than injected into system prompts, maintaining frozen prompt prefixes and maximizing cache hit rates.
 > 2. **Cognitive Tiering / Right-Sizing:** Heavy multi-step trajectory planning is delegated to **Gemini 3.8 Flash**, while high-frequency parsing and tool parameter transformation are offloaded to **Gemini 3.5 Flash Lite**.
-> 3. **Serverless Scale-to-Zero (`min-instances = 0`):** 26 microservices hosted on Cloud Run incurred $0.00 idle compute charges throughout the development lifecycle.
+> 3. **Serverless Scale-to-Zero (`min-instances = 0`):** 27 microservices hosted on Cloud Run incurred CHF 0.00 idle compute charges throughout the development lifecycle.
 
 ---
 
